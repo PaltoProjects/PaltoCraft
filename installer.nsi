@@ -13,7 +13,7 @@ Unicode True
 !define APP_NAME        "PaltoCraft"
 !define APP_VERSION     "1.0.0"
 !define APP_PUBLISHER   "PaltoCraft"
-!define APP_URL         "https://github.com/your-username/paltocraft"
+!define APP_URL         "https://github.com/PaltoCraft/PaltoCraft"
 !define APP_EXE         "PaltoCraft.exe"
 !define APP_DIR         "dist\PaltoCraft-win32-x64"
 !define REG_KEY         "Software\Microsoft\Windows\CurrentVersion\Uninstall\PaltoCraft"
