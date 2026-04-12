@@ -1,7 +1,3 @@
-/**
- * Простое хранилище на основе JSON-файла.
- * Заменяет electron-store без внешних зависимостей.
- */
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');

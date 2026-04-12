@@ -8,9 +8,7 @@ const Store = require('./store');
 
 const store = new Store();
 
-// ── Версия и автообновление ─────────────────────────────────────────────────
 const CURRENT_VERSION = '1.0.0';
-// TODO: замените на ваш реальный GitHub репозиторий
 const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/PaltoCraft/PaltoCraft/main/version.json';
 
 function compareVersions(a, b) {
@@ -23,8 +21,6 @@ function compareVersions(a, b) {
   return 0;
 }
 
-let mainWindow;
-
 function getDefaultGameDir() {
   if (process.platform === 'win32') {
     return path.join(process.env.APPDATA, '.minecraft');
@@ -35,16 +31,8 @@ function getDefaultGameDir() {
   }
 }
 
-// ── Java helpers ────────────────────────────────────────────────────────────
-
-/**
- * Получает нужную версию Java для конкретной версии MC
- * напрямую из манифеста Mojang (поле javaVersion.majorVersion).
- * Fallback — эвристика по номеру версии.
- */
 async function getRequiredJavaVersion(mcVersion, allVersionsManifest) {
   try {
-    // Ищем URL манифеста конкретной версии
     const verEntry = (allVersionsManifest || []).find(v => v.id === mcVersion);
     if (verEntry && verEntry.url) {
       const json = await fetchJson(verEntry.url);
@@ -54,7 +42,6 @@ async function getRequiredJavaVersion(mcVersion, allVersionsManifest) {
     }
   } catch {}
 
-  // Fallback если Mojang недоступен
   if (!mcVersion) return 17;
   if (/^[ab]/.test(mcVersion)) return 8;
   if (/^\d{2}w/.test(mcVersion)) return 21;
@@ -65,7 +52,6 @@ async function getRequiredJavaVersion(mcVersion, allVersionsManifest) {
   return 8;
 }
 
-/** Скачать JSON по HTTPS и вернуть распарсенный объект */
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
     const lib = url.startsWith('https') ? https : http;
@@ -81,27 +67,22 @@ function fetchJson(url) {
   });
 }
 
-/** Папка куда кладём JRE: <gameDir>/runtime/java-<ver> */
 function getJavaDir(gameDir, javaVer) {
   return path.join(gameDir || getDefaultGameDir(), 'runtime', `java-${javaVer}`);
 }
 
-/** Путь к java.exe внутри скачанного JRE */
 function findJavaExe(javaDir) {
-  // Adoptium zip распаковывается в подпапку jdk-XX.Y.Z+N-jre/
   if (!fs.existsSync(javaDir)) return null;
   const entries = fs.readdirSync(javaDir);
   for (const entry of entries) {
     const exe = path.join(javaDir, entry, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
     if (fs.existsSync(exe)) return exe;
   }
-  // Уже плоская структура (повторная распаковка)
   const flat = path.join(javaDir, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
   if (fs.existsSync(flat)) return flat;
   return null;
 }
 
-/** Скачать файл по URL, с прогресс-колбэком */
 function downloadFile(url, destPath, onProgress) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(destPath);
@@ -130,7 +111,6 @@ function downloadFile(url, destPath, onProgress) {
   });
 }
 
-/** Распаковать zip на Windows через PowerShell */
 function extractZip(zipPath, destDir) {
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
@@ -138,17 +118,14 @@ function extractZip(zipPath, destDir) {
       const cmd = `powershell -NoProfile -Command "Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${destDir}' -Force"`;
       exec(cmd, { timeout: 120000 }, (err) => err ? reject(err) : resolve());
     } else {
-      // Linux/macOS: tar.gz
       exec(`tar -xzf "${zipPath}" -C "${destDir}"`, { timeout: 120000 }, (err) => err ? reject(err) : resolve());
     }
   });
 }
 
-/** Получить ссылку на скачивание JRE с Adoptium API */
 async function getAdoptiumDownloadUrl(javaVersion) {
   const os = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux';
   const arch = process.arch === 'x64' ? 'x64' : 'x86';
-  const ext = process.platform === 'win32' ? 'zip' : 'tar.gz';
 
   const apiUrl = `https://api.adoptium.net/v3/assets/latest/${javaVersion}/hotspot?architecture=${arch}&image_type=jre&os=${os}&vendor=eclipse`;
 
@@ -170,11 +147,8 @@ async function getAdoptiumDownloadUrl(javaVersion) {
   });
 }
 
-// ── IPC: Автообновление ─────────────────────────────────────────────────────
-
 ipcMain.handle('check-update', async () => {
   try {
-    if (UPDATE_CHECK_URL.includes('YOUR_USERNAME')) return { hasUpdate: false };
     const json = await fetchJson(UPDATE_CHECK_URL);
     if (!json || !json.version) return { hasUpdate: false };
     const hasUpdate = compareVersions(json.version, CURRENT_VERSION) > 0;
@@ -210,10 +184,6 @@ ipcMain.handle('install-update', (_, installerPath) => {
   }
 });
 
-// ── IPC: Java ───────────────────────────────────────────────────────────────
-
-/** Определить нужную версию Java и проверить, скачана ли она.
- *  versionsManifest — массив из get-versions (нужен чтобы найти URL версии MC) */
 ipcMain.handle('check-java', async (_, mcVersion, gameDir, versionsManifest) => {
   const javaVer = await getRequiredJavaVersion(mcVersion, versionsManifest);
   const javaDir = getJavaDir(gameDir, javaVer);
@@ -221,27 +191,22 @@ ipcMain.handle('check-java', async (_, mcVersion, gameDir, versionsManifest) => 
   return { javaVer, javaDir, javaExe, downloaded: !!javaExe };
 });
 
-/** Скачать и распаковать JRE нужной версии */
 ipcMain.handle('download-java', async (_, javaVer, gameDir) => {
   const javaDir = getJavaDir(gameDir, javaVer);
   const tmpZip = path.join(app.getPath('temp'), `java-${javaVer}-jre.zip`);
 
   try {
-    // Получаем ссылку
     mainWindow.webContents.send('java-status', { stage: 'fetch-url', javaVer });
     const { url, size } = await getAdoptiumDownloadUrl(javaVer);
 
-    // Скачиваем
     mainWindow.webContents.send('java-status', { stage: 'downloading', javaVer, size });
     await downloadFile(url, tmpZip, (received, total) => {
       mainWindow.webContents.send('java-progress', { received, total });
     });
 
-    // Распаковываем
     mainWindow.webContents.send('java-status', { stage: 'extracting', javaVer });
     await extractZip(tmpZip, javaDir);
 
-    // Удаляем zip
     try { fs.unlinkSync(tmpZip); } catch {}
 
     const javaExe = findJavaExe(javaDir);
@@ -254,6 +219,8 @@ ipcMain.handle('download-java', async (_, javaVer, gameDir) => {
     return { success: false, error: err.message };
   }
 });
+
+let mainWindow;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -279,7 +246,6 @@ function createWindow() {
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
-// Window controls
 ipcMain.on('window-minimize', () => mainWindow.minimize());
 ipcMain.on('window-maximize', () => {
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
@@ -287,15 +253,12 @@ ipcMain.on('window-maximize', () => {
 });
 ipcMain.on('window-close', () => mainWindow.close());
 
-// Store
 ipcMain.handle('store-get', (_, key) => store.get(key));
 ipcMain.handle('store-set', (_, key, value) => store.set(key, value));
 ipcMain.handle('store-delete', (_, key) => store.delete(key));
 
-// Default game dir
 ipcMain.handle('get-default-gamedir', () => getDefaultGameDir());
 
-// Open folder picker dialog
 ipcMain.handle('pick-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
@@ -305,14 +268,12 @@ ipcMain.handle('pick-folder', async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
-// Check if version is already downloaded
 ipcMain.handle('check-version', (_, gameDir, version) => {
   const dir = gameDir || getDefaultGameDir();
   const jarPath = path.join(dir, 'versions', version, `${version}.jar`);
   return fs.existsSync(jarPath);
 });
 
-// Microsoft Auth
 ipcMain.handle('auth-microsoft', async () => {
   try {
     const { Auth } = require('msmc');
@@ -336,7 +297,6 @@ ipcMain.handle('auth-microsoft', async () => {
   }
 });
 
-// Launch / Download Minecraft
 ipcMain.handle('launch-minecraft', async (_, options) => {
   try {
     const { Client } = require('minecraft-launcher-core');
@@ -349,7 +309,6 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
 
     const gameDir = options.gameDir || getDefaultGameDir();
 
-    // Ensure game dir exists
     if (!fs.existsSync(gameDir)) {
       fs.mkdirSync(gameDir, { recursive: true });
     }
@@ -404,7 +363,6 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
 
     await launcher.launch(launchOptions);
 
-    // Скрываем/закрываем лаунчер только после того, как игра запустилась
     if (options.closeLauncher) {
       mainWindow.close();
     } else if (options.hideLauncher) {
@@ -418,7 +376,6 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
   }
 });
 
-// Fetch Minecraft skin data (bypasses CORS, works without third-party services)
 ipcMain.handle('get-skin-data', async (_, uuidOrUrl) => {
 
   const fetchBuffer = (url) => new Promise((resolve) => {
@@ -444,7 +401,6 @@ ipcMain.handle('get-skin-data', async (_, uuidOrUrl) => {
   try {
     let skinUrl = uuidOrUrl;
 
-    // UUID passed — resolve to skin URL via Mojang session API
     if (!uuidOrUrl.startsWith('http')) {
       const profileBuf = await fetchBuffer(
         `https://sessionserver.mojang.com/session/minecraft/profile/${uuidOrUrl}`
@@ -466,7 +422,6 @@ ipcMain.handle('get-skin-data', async (_, uuidOrUrl) => {
   }
 });
 
-// Get all Minecraft versions from Mojang
 ipcMain.handle('get-versions', async () => {
   try {
     return new Promise((resolve) => {

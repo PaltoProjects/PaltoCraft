@@ -1,20 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('launcher', {
-  // Window
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
 
-  // Store
   storeGet: (key) => ipcRenderer.invoke('store-get', key),
   storeSet: (key, value) => ipcRenderer.invoke('store-set', key, value),
   storeDelete: (key) => ipcRenderer.invoke('store-delete', key),
 
-  // Auth
   authMicrosoft: () => ipcRenderer.invoke('auth-microsoft'),
 
-  // Minecraft
   launch: (options) => ipcRenderer.invoke('launch-minecraft', options),
   getVersions: () => ipcRenderer.invoke('get-versions'),
   checkVersion: (gameDir, version) => ipcRenderer.invoke('check-version', gameDir, version),
@@ -22,16 +18,13 @@ contextBridge.exposeInMainWorld('launcher', {
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   getSkinData: (uuidOrUrl) => ipcRenderer.invoke('get-skin-data', uuidOrUrl),
 
-  // Java
   checkJava: (mcVersion, gameDir, versionsManifest) => ipcRenderer.invoke('check-java', mcVersion, gameDir, versionsManifest),
   downloadJava: (javaVer, gameDir) => ipcRenderer.invoke('download-java', javaVer, gameDir),
 
-  // Update
   checkUpdate: () => ipcRenderer.invoke('check-update'),
   downloadUpdate: (url) => ipcRenderer.invoke('download-update', url),
   installUpdate: (installerPath) => ipcRenderer.invoke('install-update', installerPath),
 
-  // Events
   on: (channel, callback) => {
     const allowed = ['auth-update', 'launch-log', 'launch-progress', 'launch-close', 'java-status', 'java-progress', 'update-progress'];
     if (allowed.includes(channel)) {

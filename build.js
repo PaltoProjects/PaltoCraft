@@ -1,9 +1,3 @@
-/**
- * PaltoCraft build script
- * 1. Обфусцирует JS файлы в папку .build/
- * 2. Запускает electron-packager с asar (исходники защищены)
- */
-
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
@@ -12,24 +6,18 @@ const JavaScriptObfuscator = require('javascript-obfuscator');
 const SRC_DIR = __dirname;
 const BUILD_DIR = path.join(__dirname, '.build');
 
-// Файлы которые обфусцируем
 const JS_FILES = ['main.js', 'preload.js', 'renderer.js', 'store.js'];
-
-// Файлы которые копируем как есть
 const COPY_FILES = ['index.html', 'styles.css', 'package.json', 'package-lock.json', 'version.json', 'LICENSE'];
-
-// Папки которые копируем
 const COPY_DIRS = ['assets', 'node_modules'];
 
-// Настройки обфускатора
 const OBFUSCATOR_OPTIONS = {
   compact: true,
-  controlFlowFlattening: false,   // не замедляет запуск
+  controlFlowFlattening: false,
   deadCodeInjection: false,
   debugProtection: false,
   disableConsoleOutput: false,
   identifierNamesGenerator: 'hexadecimal',
-  renameGlobals: false,           // не ломает Electron API
+  renameGlobals: false,
   selfDefending: false,
   stringArray: true,
   stringArrayEncoding: ['base64'],
@@ -104,7 +92,7 @@ function package_() {
     '--overwrite',
     '--app-version=1.0.0',
     '--icon=assets/icon.ico',
-    '--no-asar',   // node_modules работают надёжно, код защищён обфускацией
+    '--no-asar',
     '--prune',
     '--ignore=dist'
   ].join(' ');
@@ -122,7 +110,6 @@ function buildInstaller() {
   console.log('✓ Installer: dist/installer/PaltoCraft-Setup-1.0.0.exe');
 }
 
-// === Main ===
 console.log('🔨 PaltoCraft Build\n');
 clean();
 obfuscateJS();

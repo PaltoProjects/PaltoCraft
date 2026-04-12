@@ -1,4 +1,3 @@
-// ── Navigation ──────────────────────────────────────────
 document.querySelectorAll('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
@@ -8,12 +7,10 @@ document.querySelectorAll('.nav-item').forEach(btn => {
   });
 });
 
-// ── Window controls ─────────────────────────────────────
 document.getElementById('btn-minimize').addEventListener('click', () => window.launcher.minimize());
 document.getElementById('btn-maximize').addEventListener('click', () => window.launcher.maximize());
 document.getElementById('btn-close').addEventListener('click', () => window.launcher.close());
 
-// ── Particles ───────────────────────────────────────────
 function spawnParticles() {
   const container = document.getElementById('particles');
   const colors = ['#5b6af5', '#7c3aed', '#22c55e', '#60a5fa', '#f59e0b'];
@@ -35,7 +32,6 @@ function spawnParticles() {
 }
 spawnParticles();
 
-// ── Auth state ──────────────────────────────────────────
 let currentUser = null;
 
 async function loadAuth() {
@@ -81,7 +77,6 @@ function setLoggedOut() {
   document.getElementById('profile-avatar').innerHTML = '?';
 }
 
-// ── Login ────────────────────────────────────────────────
 document.getElementById('btn-login').addEventListener('click', async () => {
   const btn = document.getElementById('btn-login');
   btn.disabled = true;
@@ -98,14 +93,12 @@ document.getElementById('btn-login').addEventListener('click', async () => {
   btn.innerHTML = `<svg viewBox="0 0 21 21" width="20" height="20"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>Войти через Microsoft`;
 });
 
-// ── Logout ───────────────────────────────────────────────
 document.getElementById('btn-logout').addEventListener('click', async () => {
   await window.launcher.storeDelete('auth-token');
   await window.launcher.storeDelete('auth-profile');
   setLoggedOut();
 });
 
-// ── Versions ─────────────────────────────────────────────
 let allVersions = [];
 let activeFilter = 'release';
 let isVersionDownloaded = false;
@@ -121,7 +114,6 @@ async function checkAndUpdateLaunchButton() {
   const settings = await getSettings();
   const gameDir = settings.gameDir || await window.launcher.getDefaultGameDir();
   isVersionDownloaded = await window.launcher.checkVersion(gameDir, version);
-  // Обновляем подсказку о нужной Java (асинхронно, не блокируем кнопку)
   window.launcher.checkJava(version, gameDir, allVersions).then(jc => {
     const hint = document.getElementById('java-hint');
     if (hint) hint.textContent = `Java ${jc.javaVer} ${jc.downloaded ? '✓' : '(будет скачана)'}`;
@@ -175,7 +167,6 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
   });
 });
 
-// ── Launch ───────────────────────────────────────────────
 document.getElementById('btn-launch').addEventListener('click', async () => {
   const btn = document.getElementById('btn-launch');
   const version = document.getElementById('version-select').value;
@@ -203,8 +194,6 @@ document.getElementById('btn-launch').addEventListener('click', async () => {
   window.launcher.off('java-status');
   window.launcher.off('java-progress');
 
-  // ── Шаг 1: Проверяем Java ──────────────────────────────
-  // Передаём манифест версий — main.js достанет javaVersion.majorVersion из Mojang
   const javaCheck = await window.launcher.checkJava(version, gameDir, allVersions);
   let resolvedJavaPath = settings.javaPath || null;
 
@@ -213,7 +202,6 @@ document.getElementById('btn-launch').addEventListener('click', async () => {
       resolvedJavaPath = javaCheck.javaExe;
       appendConsole('info', `Java ${javaCheck.javaVer} уже установлена: ${javaCheck.javaExe}`);
     } else {
-      // Нужно скачать JRE
       appendConsole('info', `Java ${javaCheck.javaVer} не найдена — начинаем загрузку...`);
       document.getElementById('progress-label').textContent = `Загрузка Java ${javaCheck.javaVer}...`;
       document.getElementById('progress-fill').style.width = '0%';
@@ -247,7 +235,6 @@ document.getElementById('btn-launch').addEventListener('click', async () => {
     }
   }
 
-  // ── Шаг 2: Слушаем прогресс Minecraft ─────────────────
   window.launcher.on('launch-progress', (e) => {
     const pct = e.total ? Math.round((e.task / e.total) * 100) : 0;
     document.getElementById('progress-fill').style.width = pct + '%';
@@ -268,7 +255,6 @@ document.getElementById('btn-launch').addEventListener('click', async () => {
   document.getElementById('progress-label').textContent = isDownload ? 'Загрузка Minecraft...' : 'Запуск...';
   document.getElementById('progress-fill').style.width = '0%';
 
-  // Передаём тип версии (release / snapshot / old_beta / old_alpha)
   const versionMeta = allVersions.find(v => v.id === version);
   const versionType = versionMeta ? versionMeta.type : 'release';
 
@@ -295,7 +281,6 @@ document.getElementById('btn-launch').addEventListener('click', async () => {
   }
 });
 
-// ── Settings ─────────────────────────────────────────────
 const DEFAULTS = { minRam: 2, maxRam: 4, gameDir: '', javaPath: '', jvmArgs: '', winWidth: 854, winHeight: 480, fullscreen: false, hideLauncher: true, closeLauncher: false };
 
 async function getSettings() {
@@ -359,7 +344,6 @@ document.getElementById('btn-reset-settings').addEventListener('click', async ()
   setTimeout(() => msg.textContent = '', 2500);
 });
 
-// ── Console ──────────────────────────────────────────────
 function appendConsole(type, msg) {
   const el = document.getElementById('console-output');
   const line = document.createElement('div');
@@ -379,7 +363,6 @@ document.getElementById('btn-copy-console').addEventListener('click', () => {
   navigator.clipboard.writeText(text);
 });
 
-// ── Skin rendering ───────────────────────────────────────
 function loadImage(dataUrl) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -391,36 +374,36 @@ function loadImage(dataUrl) {
 
 function drawSkinFront(ctx, img, sc) {
   const n = img.naturalHeight === 64;
-  ctx.drawImage(img,  8,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);   // голова
-  ctx.drawImage(img, 40,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);   // голова оверлей
-  ctx.drawImage(img, 20, 20, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);  // тело
-  ctx.drawImage(img, 20, 36, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);  // тело оверлей
-  ctx.drawImage(img, 44, 20, 4, 12, 0,     8*sc,  4*sc, 12*sc);  // правая рука
+  ctx.drawImage(img,  8,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);
+  ctx.drawImage(img, 40,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);
+  ctx.drawImage(img, 20, 20, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);
+  ctx.drawImage(img, 20, 36, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);
+  ctx.drawImage(img, 44, 20, 4, 12, 0,     8*sc,  4*sc, 12*sc);
   if (n) {
-    ctx.drawImage(img, 36, 52, 4, 12, 12*sc, 8*sc,  4*sc, 12*sc); // левая рука
-    ctx.drawImage(img, 20, 52, 4, 12,  8*sc, 20*sc, 4*sc, 12*sc); // левая нога
+    ctx.drawImage(img, 36, 52, 4, 12, 12*sc, 8*sc,  4*sc, 12*sc);
+    ctx.drawImage(img, 20, 52, 4, 12,  8*sc, 20*sc, 4*sc, 12*sc);
   } else {
     ctx.save(); ctx.translate(16*sc, 8*sc);  ctx.scale(-1,1); ctx.drawImage(img, 44,  20, 4, 12, 0, 0, 4*sc, 12*sc); ctx.restore();
     ctx.save(); ctx.translate(12*sc, 20*sc); ctx.scale(-1,1); ctx.drawImage(img,  4,  20, 4, 12, 0, 0, 4*sc, 12*sc); ctx.restore();
   }
-  ctx.drawImage(img,  4, 20, 4, 12,  4*sc, 20*sc, 4*sc, 12*sc);  // правая нога
+  ctx.drawImage(img,  4, 20, 4, 12,  4*sc, 20*sc, 4*sc, 12*sc);
 }
 
 function drawSkinBack(ctx, img, sc) {
   const n = img.naturalHeight === 64;
-  ctx.drawImage(img, 24,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);   // голова зад
-  ctx.drawImage(img, 56,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);   // голова оверлей зад
-  ctx.drawImage(img, 32, 20, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);  // тело зад
-  ctx.drawImage(img, 32, 36, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);  // тело оверлей зад
-  ctx.drawImage(img, 52, 20, 4, 12, 12*sc, 8*sc,  4*sc, 12*sc);  // правая рука зад (теперь справа)
+  ctx.drawImage(img, 24,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);
+  ctx.drawImage(img, 56,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);
+  ctx.drawImage(img, 32, 20, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);
+  ctx.drawImage(img, 32, 36, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);
+  ctx.drawImage(img, 52, 20, 4, 12, 12*sc, 8*sc,  4*sc, 12*sc);
   if (n) {
-    ctx.drawImage(img, 44, 52, 4, 12,  0,    8*sc,  4*sc, 12*sc); // левая рука зад (теперь слева)
-    ctx.drawImage(img, 28, 52, 4, 12, 4*sc, 20*sc,  4*sc, 12*sc); // левая нога зад
+    ctx.drawImage(img, 44, 52, 4, 12,  0,    8*sc,  4*sc, 12*sc);
+    ctx.drawImage(img, 28, 52, 4, 12, 4*sc, 20*sc,  4*sc, 12*sc);
   } else {
     ctx.save(); ctx.translate(4*sc,  8*sc); ctx.scale(-1,1); ctx.drawImage(img, 52, 20, 4, 12, 0, 0, 4*sc, 12*sc); ctx.restore();
     ctx.save(); ctx.translate(8*sc, 20*sc); ctx.scale(-1,1); ctx.drawImage(img, 12, 20, 4, 12, 0, 0, 4*sc, 12*sc); ctx.restore();
   }
-  ctx.drawImage(img, 12, 20, 4, 12,  8*sc, 20*sc,  4*sc, 12*sc); // правая нога зад
+  ctx.drawImage(img, 12, 20, 4, 12,  8*sc, 20*sc,  4*sc, 12*sc);
 }
 
 async function loadPlayerSkin(uuid, profile) {
@@ -455,7 +438,6 @@ async function loadPlayerSkin(uuid, profile) {
       frontC.style.display = backC.style.display = 'block';
     }
 
-    // Голова в аватарках
     const headUrl = await renderSkinFace(skinDataUrl, 38);
     const headSmUrl = await renderSkinFace(skinDataUrl, 34);
     const launchAv = document.getElementById('launch-avatar');
@@ -487,7 +469,6 @@ function renderSkinFace(dataUrl, displaySize) {
   });
 }
 
-// ── 3D Skin rotation ─────────────────────────────────────
 function initSkinRotation() {
   const col   = document.getElementById('skin-col');
   const skin3d = document.getElementById('skin-3d');
@@ -525,7 +506,6 @@ function initSkinRotation() {
     raf = requestAnimationFrame(decelerate);
   });
 
-  // Touch support
   col.addEventListener('touchstart', (e) => {
     if (raf) cancelAnimationFrame(raf);
     dragging = true; lastX = e.touches[0].clientX; vel = 0; lastT = Date.now();
@@ -549,7 +529,6 @@ function initSkinRotation() {
   col.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
-// ── Автообновление ───────────────────────────────────────
 let _updateUrl = null;
 let _downloadedPath = null;
 
@@ -572,7 +551,6 @@ async function checkForUpdates() {
 document.getElementById('btn-update').addEventListener('click', async () => {
   const btn = document.getElementById('btn-update');
 
-  // Шаг 2: установить уже загруженный файл
   if (_downloadedPath) {
     btn.disabled = true;
     btn.textContent = 'Установка...';
@@ -581,7 +559,6 @@ document.getElementById('btn-update').addEventListener('click', async () => {
     return;
   }
 
-  // Шаг 1: скачать
   if (!_updateUrl) return;
   btn.disabled = true;
   btn.textContent = 'Загрузка...';
@@ -619,7 +596,6 @@ document.getElementById('btn-update').addEventListener('click', async () => {
   }
 });
 
-// ── Init ─────────────────────────────────────────────────
 appendConsole('info', 'PaltoCraft запущен.');
 appendConsole('info', `Платформа: ${navigator.platform} | Electron`);
 initSkinRotation();
