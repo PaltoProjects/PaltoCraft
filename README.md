@@ -33,7 +33,7 @@ PaltoCraft — красивый и быстрый лаунчер Minecraft с о
 
 ## Установка
 
-1. Скачай последний релиз: [**PaltoCraft-Setup-1.0.0.exe**](https://github.com/PaltoCraft/PaltoCraft/releases/latest)
+1. Скачай последний релиз: [**PaltoCraft-Setup.exe**](https://github.com/PaltoCraft/PaltoCraft/releases/latest)
 2. Запусти установщик
 3. Выбери папку установки, создай ярлык на рабочем столе
 4. Запусти PaltoCraft и войди через Microsoft аккаунт
