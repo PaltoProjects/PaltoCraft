@@ -11,7 +11,7 @@ const store = new Store();
 // ── Версия и автообновление ─────────────────────────────────────────────────
 const CURRENT_VERSION = '1.0.0';
 // TODO: замените на ваш реальный GitHub репозиторий
-const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/version.json';
+const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/PaltoCraft/PaltoCraft/main/version.json';
 
 function compareVersions(a, b) {
   const pa = String(a).split('.').map(Number);
