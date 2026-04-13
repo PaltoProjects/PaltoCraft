@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 const JavaScriptObfuscator = require('javascript-obfuscator');
 
@@ -80,6 +81,20 @@ function copyDirs() {
   }
 }
 
+function generateIntegrity() {
+  const files = ['renderer.js', 'preload.js', 'index.html', 'styles.css'];
+  const manifest = {};
+  for (const file of files) {
+    const filePath = path.join(BUILD_DIR, file);
+    if (fs.existsSync(filePath)) {
+      manifest[file] = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+      console.log(`✓ Hashed ${file}`);
+    }
+  }
+  fs.writeFileSync(path.join(BUILD_DIR, 'integrity.json'), JSON.stringify(manifest, null, 2), 'utf8');
+  console.log('✓ integrity.json generated');
+}
+
 function package_() {
   console.log('\n📦 Packaging with electron-packager...');
   const cmd = [
@@ -90,7 +105,7 @@ function package_() {
     '--arch=x64',
     '--out=dist',
     '--overwrite',
-    '--app-version=1.0.1',
+    '--app-version=1.0.2',
     '--icon=assets/icon.ico',
     '--no-asar',
     '--prune'
@@ -106,7 +121,7 @@ function buildInstaller() {
     'powershell -Command "& \'C:\\Program Files (x86)\\NSIS\\makensis.exe\' /INPUTCHARSET UTF8 \'installer.nsi\'"',
     { stdio: 'inherit', cwd: SRC_DIR }
   );
-  console.log('✓ Installer: dist/installer/PaltoCraft-Setup-1.0.1.exe');
+  console.log('✓ Installer: dist/installer/PaltoCraft-Setup-1.0.2.exe');
 }
 
 console.log('🔨 PaltoCraft Build\n');
@@ -114,6 +129,7 @@ clean();
 obfuscateJS();
 copyFiles();
 copyDirs();
+generateIntegrity();
 package_();
 buildInstaller();
 console.log('\n✅ Build complete!');

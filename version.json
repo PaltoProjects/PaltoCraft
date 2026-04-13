@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
-  "url": "https://github.com/PaltoCraft/PaltoCraft/releases/download/v1.0.1/PaltoCraft-Setup-1.0.1.exe",
-  "notes": "3D скин с анимацией, адаптивный интерфейс, исправлена авторизация Microsoft"
+  "version": "1.0.2",
+  "url": "https://github.com/PaltoCraft/PaltoCraft/releases/download/v1.0.2/PaltoCraft-Setup-1.0.2.exe",
+  "notes": "Проверка целостности файлов, защита от изменений, кэш скина и версий офлайн"
 }

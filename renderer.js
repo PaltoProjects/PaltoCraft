@@ -134,9 +134,19 @@ async function loadVersions() {
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
   if (result.success && result.versions.length) {
     allVersions = result.versions;
+    await window.launcher.cacheSet('versions.json', JSON.stringify(result.versions));
     appendConsole('info', `Загружено ${result.versions.length} версий за ${elapsed}с.`);
     renderVersions();
   } else {
+    const cached = await window.launcher.cacheGet('versions.json');
+    if (cached) {
+      try {
+        allVersions = JSON.parse(cached);
+        appendConsole('warn', `Нет интернета — используется кэш (${allVersions.length} версий).`);
+        renderVersions();
+        return;
+      } catch {}
+    }
     appendConsole('warn', `Не удалось загрузить версии (${elapsed}с): ${result.error || 'нет ответа от сервера'}. Используется список по умолчанию.`);
     select.innerHTML = '<option value="1.21.4">1.21.4</option><option value="1.20.4">1.20.4</option>';
     checkAndUpdateLaunchButton();
@@ -378,7 +388,11 @@ async function loadPlayerSkin(uuid, profile) {
       : await window.launcher.getSkinData(uuid);
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
-    if (!skinDataUrl) { appendConsole('warn', `Скин не загружен (${elapsed}с) — сервер недоступен.`); return; }
+    if (!skinDataUrl) {
+      appendConsole('warn', `Скин не загружен (${elapsed}с) — сервер недоступен. Загружаю из кэша...`);
+      await loadSkinFromCache();
+      return;
+    }
     appendConsole('info', `Скин получен за ${elapsed}с, рендеринг 3D...`);
 
     const canvas = document.getElementById('skin-viewer-canvas');
@@ -405,19 +419,51 @@ async function loadPlayerSkin(uuid, profile) {
     const anim = skinViewer.animation = new skinview3d.WalkingAnimation();
     anim.speed = 0.6;
 
+    await window.launcher.cacheSet('skin.dat', skinDataUrl);
+
     try {
       const headUrl = await renderSkinFace(skinDataUrl, 38);
       const headSmUrl = await renderSkinFace(skinDataUrl, 34);
       const launchAv = document.getElementById('launch-avatar');
       const profileAv = document.getElementById('profile-avatar');
-      if (launchAv && headUrl)    launchAv.innerHTML  = `<img src="${headUrl}"   alt="" style="width:100%;height:100%;border-radius:4px;image-rendering:pixelated">`;
-      if (profileAv && headSmUrl) profileAv.innerHTML = `<img src="${headSmUrl}" alt="" style="width:100%;height:100%;border-radius:4px;image-rendering:pixelated">`;
+      if (launchAv && headUrl)    { launchAv.innerHTML  = `<img src="${headUrl}"   alt="" style="width:100%;height:100%;border-radius:4px;image-rendering:pixelated">`; await window.launcher.cacheSet('avatar-lg.dat', headUrl); }
+      if (profileAv && headSmUrl) { profileAv.innerHTML = `<img src="${headSmUrl}" alt="" style="width:100%;height:100%;border-radius:4px;image-rendering:pixelated">`; await window.launcher.cacheSet('avatar-sm.dat', headSmUrl); }
     } catch {}
 
     appendConsole('info', 'Скин успешно загружен и отрисован в 3D.');
   } catch (e) {
     appendConsole('error', 'Ошибка загрузки скина: ' + e.message);
+    await loadSkinFromCache();
   }
+}
+
+async function loadSkinFromCache() {
+  try {
+    const skinDataUrl = await window.launcher.cacheGet('skin.dat');
+    const headUrl     = await window.launcher.cacheGet('avatar-lg.dat');
+    const headSmUrl   = await window.launcher.cacheGet('avatar-sm.dat');
+
+    if (skinDataUrl) {
+      const canvas = document.getElementById('skin-viewer-canvas');
+      if (canvas) {
+        if (skinViewer) { skinViewer.dispose(); skinViewer = null; }
+        skinViewer = new skinview3d.SkinViewer({ canvas, width: 380, height: 760, skin: skinDataUrl });
+        skinViewer.renderer.setClearColor(0x000000, 0);
+        skinViewer.controls.enableZoom = false;
+        skinViewer.controls.enablePan = false;
+        skinViewer.controls.rotateSpeed = 0.9;
+        const anim = skinViewer.animation = new skinview3d.WalkingAnimation();
+        anim.speed = 0.6;
+      }
+    }
+
+    const launchAv  = document.getElementById('launch-avatar');
+    const profileAv = document.getElementById('profile-avatar');
+    if (launchAv  && headUrl)   launchAv.innerHTML  = `<img src="${headUrl}"   alt="" style="width:100%;height:100%;border-radius:4px;image-rendering:pixelated">`;
+    if (profileAv && headSmUrl) profileAv.innerHTML = `<img src="${headSmUrl}" alt="" style="width:100%;height:100%;border-radius:4px;image-rendering:pixelated">`;
+
+    if (skinDataUrl) appendConsole('info', 'Скин загружен из кэша (нет интернета).');
+  } catch {}
 }
 
 function renderSkinFace(dataUrl, displaySize) {
@@ -451,7 +497,7 @@ async function checkForUpdates() {
 
     document.getElementById('update-version-label').textContent = `v${result.version}`;
     document.getElementById('update-notes').textContent = result.notes || '';
-    document.getElementById('update-banner').style.display = 'flex';
+    document.getElementById('update-overlay').style.display = 'flex';
     appendConsole('info', `Доступно обновление v${result.version}: ${result.notes || ''}`);
   } catch (e) {
     appendConsole('warn', 'Ошибка проверки обновлений: ' + e.message);

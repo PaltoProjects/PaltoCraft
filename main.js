@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
 const { execFile, exec, spawn } = require('child_process');
@@ -8,8 +9,34 @@ const Store = require('./store');
 
 const store = new Store();
 
-const CURRENT_VERSION = '1.0.1';
+const CURRENT_VERSION = '1.0.2';
 const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/PaltoCraft/PaltoCraft/main/version.json';
+
+function checkIntegrity() {
+  const manifestPath = path.join(__dirname, 'integrity.json');
+  if (!fs.existsSync(manifestPath)) return;
+
+  let manifest;
+  try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { return; }
+
+  const files = ['renderer.js', 'preload.js', 'index.html', 'styles.css'];
+  for (const file of files) {
+    const filePath = path.join(__dirname, file);
+    if (!fs.existsSync(filePath)) continue;
+    const hash = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+    if (manifest[file] && hash !== manifest[file]) {
+      dialog.showMessageBoxSync({
+        type: 'error',
+        title: 'PaltoCraft',
+        message: 'Файлы лаунчера повреждены или изменены.\nТребуется переустановка.',
+        buttons: ['Переустановить']
+      });
+      shell.openExternal('https://github.com/PaltoCraft/PaltoCraft/releases/latest');
+      app.quit();
+      return;
+    }
+  }
+}
 
 function compareVersions(a, b) {
   const pa = String(a).split('.').map(Number);
@@ -243,7 +270,10 @@ function createWindow() {
   mainWindow.setMenuBarVisibility(false);
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  checkIntegrity();
+  createWindow();
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 ipcMain.on('window-minimize', () => mainWindow.minimize());
@@ -420,6 +450,23 @@ ipcMain.handle('get-skin-data', async (_, uuidOrUrl) => {
   } catch {
     return null;
   }
+});
+
+ipcMain.handle('cache-set', (_, key, value) => {
+  try {
+    const cacheDir = path.join(app.getPath('userData'), 'cache');
+    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(path.join(cacheDir, key), value, 'utf8');
+    return true;
+  } catch { return false; }
+});
+
+ipcMain.handle('cache-get', (_, key) => {
+  try {
+    const filePath = path.join(app.getPath('userData'), 'cache', key);
+    if (!fs.existsSync(filePath)) return null;
+    return fs.readFileSync(filePath, 'utf8');
+  } catch { return null; }
 });
 
 ipcMain.handle('get-versions', async () => {

@@ -11,7 +11,7 @@ Unicode True
 ;--------------------------------
 ; Настройки приложения
 !define APP_NAME        "PaltoCraft"
-!define APP_VERSION     "1.0.1"
+!define APP_VERSION     "1.0.2"
 !define APP_PUBLISHER   "PaltoCraft"
 !define APP_URL         "https://github.com/PaltoCraft/PaltoCraft"
 !define APP_EXE         "PaltoCraft.exe"
@@ -77,6 +77,9 @@ ShowUninstDetails show
 Section "PaltoCraft" SecMain
   SectionIn RO  ; обязательная секция
 
+  ; Снимаем защиту записи перед установкой (нужно для обновлений)
+  ExecWait 'icacls "$INSTDIR" /reset /T /C /Q'
+
   SetOutPath "$INSTDIR"
   SetOverwrite on
 
@@ -96,6 +99,9 @@ Section "PaltoCraft" SecMain
 
   ; Создаём деинсталлятор
   WriteUninstaller "$INSTDIR\Uninstall.exe"
+
+  ; Защищаем файлы от изменения (запрет записи для всех)
+  ExecWait 'icacls "$INSTDIR\resources" /deny *S-1-1-0:(W,D,DC,WD,AD) /T /C /Q'
 
   ; Ярлык в меню Пуск
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"

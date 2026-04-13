@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld('launcher', {
   downloadUpdate: (url) => ipcRenderer.invoke('download-update', url),
   installUpdate: (installerPath) => ipcRenderer.invoke('install-update', installerPath),
 
+  cacheSet: (key, value) => ipcRenderer.invoke('cache-set', key, value),
+  cacheGet: (key) => ipcRenderer.invoke('cache-get', key),
+
   on: (channel, callback) => {
     const allowed = ['auth-update', 'launch-log', 'launch-progress', 'launch-close', 'java-status', 'java-progress', 'update-progress'];
     if (allowed.includes(channel)) {
