@@ -8,7 +8,7 @@ const SRC_DIR = __dirname;
 const BUILD_DIR = path.join(__dirname, '.build');
 
 const JS_FILES = ['main.js', 'preload.js', 'renderer.js', 'store.js'];
-const COPY_FILES = ['index.html', 'styles.css', 'package.json', 'package-lock.json', 'version.json', 'LICENSE'];
+const COPY_FILES = ['index.html', 'styles.css', 'package.json', 'package-lock.json', 'version.json', 'servers.json', 'LICENSE'];
 const COPY_DIRS = ['assets', 'node_modules'];
 
 const OBFUSCATOR_OPTIONS = {

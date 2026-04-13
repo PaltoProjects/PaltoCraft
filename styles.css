@@ -320,6 +320,100 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .console .log-error { color: #f87171; }
 .console .log-warn  { color: #fbbf24; }
 
+.servers-bar {
+  flex-shrink: 0; display: flex; align-items: center; gap: 14px;
+  padding: 9px 24px; border-top: 1px solid var(--border);
+  background: var(--surface); overflow-x: auto;
+}
+.servers-bar::-webkit-scrollbar { height: 3px; }
+.servers-bar-label {
+  font-size: 10px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .7px;
+  flex-shrink: 0; display: flex; align-items: center; gap: 5px;
+}
+.servers-list { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
+.server-card {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 13px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 9px;
+  white-space: nowrap; flex-shrink: 0;
+  transition: border-color .15s;
+}
+.server-card:hover { border-color: var(--accent); }
+.server-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  background: var(--green); box-shadow: 0 0 7px var(--green);
+}
+.server-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.server-sep { color: var(--border); font-size: 12px; }
+.server-ip { font-size: 11px; color: var(--muted); font-family: 'Cascadia Code', monospace; }
+.server-ver {
+  font-size: 10px; color: var(--accent); font-weight: 600;
+  padding: 2px 7px; background: rgba(91,106,245,.12); border-radius: 4px;
+}
+.server-copy-btn {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--muted); display: flex; align-items: center;
+  padding: 2px; border-radius: 4px; transition: color .15s;
+}
+.server-copy-btn:hover { color: var(--text); }
+
+.admin-modal {
+  position: fixed; inset: 38px 0 0 0; z-index: 998;
+  background: rgba(10,10,20,.88); backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  -webkit-app-region: no-drag;
+}
+.admin-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; width: min(620px, 92%); max-height: 78vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0,0,0,.6); animation: fadein .2s ease;
+}
+.admin-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.admin-hdr h3 { font-size: 15px; font-weight: 700; }
+.admin-close-btn {
+  background: transparent; border: none; color: var(--muted);
+  font-size: 16px; cursor: pointer; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; transition: all .15s; font-family: inherit;
+}
+.admin-close-btn:hover { background: var(--surface2); color: var(--text); }
+.admin-body {
+  flex: 1; overflow-y: auto; padding: 18px 22px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.admin-section-title {
+  font-size: 10px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .7px;
+}
+.admin-server-row {
+  display: grid; grid-template-columns: 1.4fr 1.4fr 90px 30px;
+  gap: 8px; align-items: center;
+}
+.admin-footer {
+  padding: 14px 22px; border-top: 1px solid var(--border);
+  display: flex; gap: 10px; align-items: center; flex-shrink: 0;
+}
+.btn-admin {
+  background: rgba(91,106,245,.12); border: 1px solid rgba(91,106,245,.3);
+  color: var(--accent); border-radius: 7px; padding: 5px 12px;
+  font-size: 11px; font-weight: 700; font-family: inherit;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.btn-admin:hover { background: rgba(91,106,245,.22); border-color: var(--accent); }
+.admin-del-btn {
+  background: transparent; border: none; color: var(--red);
+  cursor: pointer; font-size: 15px; width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; font-family: inherit; transition: background .15s;
+}
+.admin-del-btn:hover { background: rgba(239,68,68,.1); }
+.admin-hint { font-size: 11px; color: var(--muted); }
+
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }

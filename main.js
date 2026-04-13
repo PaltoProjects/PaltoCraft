@@ -452,6 +452,20 @@ ipcMain.handle('get-skin-data', async (_, uuidOrUrl) => {
   }
 });
 
+ipcMain.handle('check-admin', (_, uuid) => {
+  if (!uuid) return false;
+  const p = ['a9a1035e', '9319', '46de', '9f4b', 'a6124377dd9d'];
+  return String(uuid).replace(/-/g, '') === p.join('');
+});
+
+ipcMain.handle('get-servers', async () => {
+  try {
+    const url = 'https://raw.githubusercontent.com/' + 'PaltoCraft/PaltoCraft/main/servers.json';
+    const json = await fetchJson(url);
+    return Array.isArray(json) ? json : [];
+  } catch { return []; }
+});
+
 ipcMain.handle('cache-set', (_, key, value) => {
   try {
     const cacheDir = path.join(app.getPath('userData'), 'cache');

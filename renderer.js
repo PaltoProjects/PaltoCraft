@@ -66,6 +66,7 @@ function setLoggedIn(token, profile) {
 
   loadPlayerSkin(uuid, profile);
   loadVersions();
+  initAdmin(uuid);
 }
 
 function setLoggedOut() {
@@ -552,8 +553,125 @@ document.getElementById('btn-update').addEventListener('click', async () => {
   }
 });
 
+function _esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let _srv = [];
+
+async function loadServers() {
+  try {
+    const data = await window.launcher.getServers();
+    if (Array.isArray(data)) _srv = data;
+    renderServers();
+  } catch {}
+}
+
+function renderServers() {
+  const bar = document.getElementById('servers-bar');
+  const list = document.getElementById('servers-list');
+  if (!bar || !list) return;
+  if (!_srv.length) { bar.style.display = 'none'; return; }
+
+  list.innerHTML = _srv.map((s) =>
+    `<div class="server-card" data-ip="${_esc(s.ip)}">
+      <span class="server-dot"></span>
+      <span class="server-name">${_esc(s.name)}</span>
+      <span class="server-sep">|</span>
+      <span class="server-ip">${_esc(s.ip)}</span>
+      <span class="server-sep">|</span>
+      <span class="server-ver">${_esc(s.version)}</span>
+      <button class="server-copy-btn" title="Скопировать IP">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      </button>
+    </div>`
+  ).join('');
+
+  list.querySelectorAll('.server-copy-btn').forEach(btn => {
+    btn.onclick = () => navigator.clipboard.writeText(btn.closest('.server-card').dataset.ip);
+  });
+
+  bar.style.display = 'flex';
+}
+
+async function initAdmin(uuid) {
+  try {
+    const ok = await window.launcher.checkAdmin(uuid);
+    if (!ok) return;
+    const wrap = document.querySelector('#page-console .page-header > div');
+    if (wrap) {
+      const b = document.createElement('button');
+      b.className = 'btn-admin';
+      b.textContent = 'Админ-Панель';
+      b.onclick = () => { const m = document.getElementById('__ap'); if (m) { m.style.display = 'flex'; _renderAdminRows(); } };
+      wrap.insertBefore(b, wrap.firstChild);
+    }
+    _buildAdminPanel();
+  } catch {}
+}
+
+function _buildAdminPanel() {
+  const ov = document.createElement('div');
+  ov.id = '__ap';
+  ov.className = 'admin-modal';
+  ov.style.display = 'none';
+
+  const card = document.createElement('div');
+  card.className = 'admin-card';
+  card.innerHTML = `
+    <div class="admin-hdr">
+      <h3>Управление</h3>
+      <button class="admin-close-btn" id="__ap-x">✕</button>
+    </div>
+    <div class="admin-body">
+      <span class="admin-section-title">Игровые серверы</span>
+      <div id="__ap-rows"></div>
+      <button class="btn btn-sm" id="__ap-add">+ Добавить сервер</button>
+    </div>
+    <div class="admin-footer">
+      <button class="btn btn-primary" id="__ap-copy">Скопировать JSON</button>
+      <span class="admin-hint">Вставь в servers.json на GitHub и запушь</span>
+    </div>`;
+
+  ov.appendChild(card);
+  document.body.appendChild(ov);
+
+  document.getElementById('__ap-x').onclick = () => { ov.style.display = 'none'; };
+  document.getElementById('__ap-add').onclick = () => { _srv.push({ name: '', ip: '', version: '' }); _renderAdminRows(); };
+  document.getElementById('__ap-copy').onclick = () => {
+    navigator.clipboard.writeText(JSON.stringify(_srv, null, 2));
+    const btn = document.getElementById('__ap-copy');
+    const orig = btn.textContent;
+    btn.textContent = 'Скопировано!';
+    setTimeout(() => { btn.textContent = orig; }, 1800);
+  };
+}
+
+function _renderAdminRows() {
+  const c = document.getElementById('__ap-rows');
+  if (!c) return;
+  c.innerHTML = '';
+  _srv.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'admin-server-row';
+    row.innerHTML = `
+      <input class="input" placeholder="Название" value="${_esc(s.name)}" data-i="${i}" data-f="name">
+      <input class="input" placeholder="IP адрес"  value="${_esc(s.ip)}"   data-i="${i}" data-f="ip">
+      <input class="input" placeholder="Версия"    value="${_esc(s.version)}" data-i="${i}" data-f="version">
+      <button class="admin-del-btn" data-i="${i}">✕</button>`;
+    c.appendChild(row);
+  });
+  c.querySelectorAll('.input[data-i]').forEach(inp => {
+    inp.oninput = () => { _srv[+inp.dataset.i][inp.dataset.f] = inp.value; renderServers(); };
+  });
+  c.querySelectorAll('.admin-del-btn').forEach(btn => {
+    btn.onclick = () => { _srv.splice(+btn.dataset.i, 1); _renderAdminRows(); renderServers(); };
+  });
+}
+
 appendConsole('info', 'PaltoCraft запущен.');
 appendConsole('info', `Платформа: ${navigator.platform} | Electron`);
 loadAuth();
 loadSettings();
 checkForUpdates();
+loadServers();

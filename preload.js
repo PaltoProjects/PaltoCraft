@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('launcher', {
   cacheSet: (key, value) => ipcRenderer.invoke('cache-set', key, value),
   cacheGet: (key) => ipcRenderer.invoke('cache-get', key),
 
+  checkAdmin: (uuid) => ipcRenderer.invoke('check-admin', uuid),
+  getServers: () => ipcRenderer.invoke('get-servers'),
+
   on: (channel, callback) => {
     const allowed = ['auth-update', 'launch-log', 'launch-progress', 'launch-close', 'java-status', 'java-progress', 'update-progress'];
     if (allowed.includes(channel)) {
