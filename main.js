@@ -9,7 +9,7 @@ const Store = require('./store');
 
 const store = new Store();
 
-const CURRENT_VERSION = '1.0.2';
+const CURRENT_VERSION = '1.0.3';
 const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/PaltoCraft/PaltoCraft/main/version.json';
 
 function checkIntegrity() {

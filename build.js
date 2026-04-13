@@ -105,7 +105,7 @@ function package_() {
     '--arch=x64',
     '--out=dist',
     '--overwrite',
-    '--app-version=1.0.2',
+    '--app-version=1.0.3',
     '--icon=assets/icon.ico',
     '--no-asar',
     '--prune'
@@ -121,7 +121,7 @@ function buildInstaller() {
     'powershell -Command "& \'C:\\Program Files (x86)\\NSIS\\makensis.exe\' /INPUTCHARSET UTF8 \'installer.nsi\'"',
     { stdio: 'inherit', cwd: SRC_DIR }
   );
-  console.log('✓ Installer: dist/installer/PaltoCraft-Setup-1.0.2.exe');
+  console.log('✓ Installer: dist/installer/PaltoCraft-Setup-1.0.3.exe');
 }
 
 console.log('🔨 PaltoCraft Build\n');

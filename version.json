@@ -1,5 +1,5 @@
 {
-  "version": "1.0.2",
-  "url": "https://github.com/PaltoCraft/PaltoCraft/releases/download/v1.0.2/PaltoCraft-Setup-1.0.2.exe",
-  "notes": "Проверка целостности файлов, защита от изменений, кэш скина и версий офлайн"
+  "version": "1.0.3",
+  "url": "https://github.com/PaltoCraft/PaltoCraft/releases/download/v1.0.3/PaltoCraft-Setup-1.0.3.exe",
+  "notes": "Оптимизированные сборки с модами, реклама серверов, папки игры"
 }
