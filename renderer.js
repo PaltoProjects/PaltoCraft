@@ -363,48 +363,7 @@ document.getElementById('btn-copy-console').addEventListener('click', () => {
   navigator.clipboard.writeText(text);
 });
 
-function loadImage(dataUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = dataUrl;
-  });
-}
-
-function drawSkinFront(ctx, img, sc) {
-  const n = img.naturalHeight === 64;
-  ctx.drawImage(img,  8,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);
-  ctx.drawImage(img, 40,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);
-  ctx.drawImage(img, 20, 20, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);
-  ctx.drawImage(img, 20, 36, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);
-  ctx.drawImage(img, 44, 20, 4, 12, 0,     8*sc,  4*sc, 12*sc);
-  if (n) {
-    ctx.drawImage(img, 36, 52, 4, 12, 12*sc, 8*sc,  4*sc, 12*sc);
-    ctx.drawImage(img, 20, 52, 4, 12,  8*sc, 20*sc, 4*sc, 12*sc);
-  } else {
-    ctx.save(); ctx.translate(16*sc, 8*sc);  ctx.scale(-1,1); ctx.drawImage(img, 44,  20, 4, 12, 0, 0, 4*sc, 12*sc); ctx.restore();
-    ctx.save(); ctx.translate(12*sc, 20*sc); ctx.scale(-1,1); ctx.drawImage(img,  4,  20, 4, 12, 0, 0, 4*sc, 12*sc); ctx.restore();
-  }
-  ctx.drawImage(img,  4, 20, 4, 12,  4*sc, 20*sc, 4*sc, 12*sc);
-}
-
-function drawSkinBack(ctx, img, sc) {
-  const n = img.naturalHeight === 64;
-  ctx.drawImage(img, 24,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);
-  ctx.drawImage(img, 56,  8, 8, 8,  4*sc,  0,     8*sc, 8*sc);
-  ctx.drawImage(img, 32, 20, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);
-  ctx.drawImage(img, 32, 36, 8, 12, 4*sc,  8*sc,  8*sc, 12*sc);
-  ctx.drawImage(img, 52, 20, 4, 12, 12*sc, 8*sc,  4*sc, 12*sc);
-  if (n) {
-    ctx.drawImage(img, 44, 52, 4, 12,  0,    8*sc,  4*sc, 12*sc);
-    ctx.drawImage(img, 28, 52, 4, 12, 4*sc, 20*sc,  4*sc, 12*sc);
-  } else {
-    ctx.save(); ctx.translate(4*sc,  8*sc); ctx.scale(-1,1); ctx.drawImage(img, 52, 20, 4, 12, 0, 0, 4*sc, 12*sc); ctx.restore();
-    ctx.save(); ctx.translate(8*sc, 20*sc); ctx.scale(-1,1); ctx.drawImage(img, 12, 20, 4, 12, 0, 0, 4*sc, 12*sc); ctx.restore();
-  }
-  ctx.drawImage(img, 12, 20, 4, 12,  8*sc, 20*sc,  4*sc, 12*sc);
-}
+let skinViewer = null;
 
 async function loadPlayerSkin(uuid, profile) {
   try {
@@ -420,32 +379,42 @@ async function loadPlayerSkin(uuid, profile) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
     if (!skinDataUrl) { appendConsole('warn', `Скин не загружен (${elapsed}с) — сервер недоступен.`); return; }
-    appendConsole('info', `Скин получен за ${elapsed}с, рендеринг...`);
+    appendConsole('info', `Скин получен за ${elapsed}с, рендеринг 3D...`);
 
-    const img = await loadImage(skinDataUrl);
-    if (!img) { appendConsole('warn', 'Ошибка декодирования скина.'); return; }
+    const canvas = document.getElementById('skin-viewer-canvas');
+    const col = document.getElementById('skin-col');
+    if (!canvas || !col) return;
 
-    const sc = 8, W = 16*sc, H = 32*sc;
-    const frontC = document.getElementById('skin-canvas-front');
-    const backC  = document.getElementById('skin-canvas-back');
-    if (frontC && backC) {
-      frontC.width = backC.width = W;
-      frontC.height = backC.height = H;
-      const ctxF = frontC.getContext('2d'); ctxF.imageSmoothingEnabled = false;
-      const ctxB = backC.getContext('2d');  ctxB.imageSmoothingEnabled = false;
-      drawSkinFront(ctxF, img, sc);
-      drawSkinBack(ctxB, img, sc);
-      frontC.style.display = backC.style.display = 'block';
+    if (skinViewer) {
+      skinViewer.dispose();
+      skinViewer = null;
     }
 
-    const headUrl = await renderSkinFace(skinDataUrl, 38);
-    const headSmUrl = await renderSkinFace(skinDataUrl, 34);
-    const launchAv = document.getElementById('launch-avatar');
-    const profileAv = document.getElementById('profile-avatar');
-    if (launchAv && headUrl)   launchAv.innerHTML  = `<img src="${headUrl}"   alt="" style="width:100%;height:100%;border-radius:4px;image-rendering:pixelated">`;
-    if (profileAv && headSmUrl) profileAv.innerHTML = `<img src="${headSmUrl}" alt="" style="width:100%;height:100%;border-radius:4px;image-rendering:pixelated">`;
+    skinViewer = new skinview3d.SkinViewer({
+      canvas,
+      width: 380,
+      height: 760,
+      skin: skinDataUrl,
+    });
 
-    appendConsole('info', 'Скин успешно загружен и отрисован.');
+    skinViewer.renderer.setClearColor(0x000000, 0);
+    skinViewer.controls.enableZoom = false;
+    skinViewer.controls.enablePan = false;
+    skinViewer.controls.rotateSpeed = 0.9;
+
+    const anim = skinViewer.animation = new skinview3d.WalkingAnimation();
+    anim.speed = 0.6;
+
+    try {
+      const headUrl = await renderSkinFace(skinDataUrl, 38);
+      const headSmUrl = await renderSkinFace(skinDataUrl, 34);
+      const launchAv = document.getElementById('launch-avatar');
+      const profileAv = document.getElementById('profile-avatar');
+      if (launchAv && headUrl)    launchAv.innerHTML  = `<img src="${headUrl}"   alt="" style="width:100%;height:100%;border-radius:4px;image-rendering:pixelated">`;
+      if (profileAv && headSmUrl) profileAv.innerHTML = `<img src="${headSmUrl}" alt="" style="width:100%;height:100%;border-radius:4px;image-rendering:pixelated">`;
+    } catch {}
+
+    appendConsole('info', 'Скин успешно загружен и отрисован в 3D.');
   } catch (e) {
     appendConsole('error', 'Ошибка загрузки скина: ' + e.message);
   }
@@ -469,65 +438,6 @@ function renderSkinFace(dataUrl, displaySize) {
   });
 }
 
-function initSkinRotation() {
-  const col   = document.getElementById('skin-col');
-  const skin3d = document.getElementById('skin-3d');
-  if (!col || !skin3d) return;
-
-  let dragging = false, lastX = 0, rotY = 0, vel = 0, lastT = 0, raf = null;
-
-  const setRot = (y) => { skin3d.style.transform = `rotateY(${y}deg)`; };
-
-  const decelerate = () => {
-    vel *= 0.92;
-    if (Math.abs(vel) < 0.1) { vel = 0; return; }
-    rotY += vel;
-    setRot(rotY);
-    raf = requestAnimationFrame(decelerate);
-  };
-
-  col.addEventListener('mousedown', (e) => {
-    if (raf) cancelAnimationFrame(raf);
-    dragging = true; lastX = e.clientX; vel = 0; lastT = Date.now();
-    skin3d.style.transition = 'none';
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
-    const dx = e.clientX - lastX, dt = Date.now() - lastT || 1;
-    vel = dx / dt * 10;
-    rotY += dx * 0.6;
-    lastX = e.clientX; lastT = Date.now();
-    setRot(rotY);
-  });
-  document.addEventListener('mouseup', () => {
-    if (!dragging) return;
-    dragging = false;
-    raf = requestAnimationFrame(decelerate);
-  });
-
-  col.addEventListener('touchstart', (e) => {
-    if (raf) cancelAnimationFrame(raf);
-    dragging = true; lastX = e.touches[0].clientX; vel = 0; lastT = Date.now();
-    skin3d.style.transition = 'none';
-  }, { passive: true });
-  col.addEventListener('touchmove', (e) => {
-    if (!dragging) return;
-    const dx = e.touches[0].clientX - lastX, dt = Date.now() - lastT || 1;
-    vel = dx / dt * 10;
-    rotY += dx * 0.6;
-    lastX = e.touches[0].clientX; lastT = Date.now();
-    setRot(rotY);
-    e.preventDefault();
-  }, { passive: false });
-  col.addEventListener('touchend', () => {
-    if (!dragging) return;
-    dragging = false;
-    raf = requestAnimationFrame(decelerate);
-  });
-
-  col.addEventListener('contextmenu', (e) => e.preventDefault());
-}
 
 let _updateUrl = null;
 let _downloadedPath = null;
@@ -598,7 +508,6 @@ document.getElementById('btn-update').addEventListener('click', async () => {
 
 appendConsole('info', 'PaltoCraft запущен.');
 appendConsole('info', `Платформа: ${navigator.platform} | Electron`);
-initSkinRotation();
 loadAuth();
 loadSettings();
 checkForUpdates();

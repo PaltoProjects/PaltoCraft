@@ -8,7 +8,7 @@ const Store = require('./store');
 
 const store = new Store();
 
-const CURRENT_VERSION = '1.0.0';
+const CURRENT_VERSION = '1.0.1';
 const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/PaltoCraft/PaltoCraft/main/version.json';
 
 function compareVersions(a, b) {

@@ -94,10 +94,7 @@
 
           <div id="state-launch" class="launch-panel" style="display:none">
             <div class="skin-col" id="skin-col">
-              <div id="skin-3d">
-                <canvas id="skin-canvas-front" class="skin-canvas"></canvas>
-                <canvas id="skin-canvas-back"  class="skin-canvas skin-canvas-back"></canvas>
-              </div>
+              <canvas id="skin-viewer-canvas"></canvas>
             </div>
 
             <div class="launch-col">
@@ -228,7 +225,7 @@
                 <img src="assets/creeper.svg" width="36" height="36" alt="">
                 <span>PaltoCraft</span>
               </div>
-              <p class="about-ver">Версия 1.0.0</p>
+              <p class="about-ver">Версия 1.0.1</p>
               <p class="about-desc">Лаунчер Minecraft с официальной авторизацией Microsoft. Поддерживает все версии игры.</p>
             </div>
           </div>
@@ -257,6 +254,7 @@
     </main>
   </div>
 
+  <script src="node_modules/skinview3d/bundles/skinview3d.bundle.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>
