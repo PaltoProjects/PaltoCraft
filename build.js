@@ -37,10 +37,25 @@ function clean() {
 }
 
 function obfuscateJS() {
+  // Inject admin hash from gitignored .admin-secret (contains UUID line)
+  const secretPath = path.join(SRC_DIR, '.admin-secret');
+  let adminHash = '';
+  if (fs.existsSync(secretPath)) {
+    const raw = fs.readFileSync(secretPath, 'utf8').trim().replace(/-/g, '');
+    adminHash = crypto.createHash('sha256').update(raw).digest('hex');
+    console.log('✓ Admin hash injected from .admin-secret');
+  } else {
+    console.warn('⚠ .admin-secret not found — admin panel will be disabled in build');
+  }
+
   for (const file of JS_FILES) {
     const src = path.join(SRC_DIR, file);
     const dst = path.join(BUILD_DIR, file);
-    const code = fs.readFileSync(src, 'utf8');
+    let code = fs.readFileSync(src, 'utf8');
+    // Replace placeholder with real hash before obfuscation
+    if (adminHash) {
+      code = code.replace(/__ADMIN_HASH__/g, adminHash);
+    }
     const result = JavaScriptObfuscator.obfuscate(code, OBFUSCATOR_OPTIONS);
     fs.writeFileSync(dst, result.getObfuscatedCode(), 'utf8');
     const ratio = ((1 - result.getObfuscatedCode().length / code.length) * -100).toFixed(0);

@@ -124,7 +124,13 @@
               <div class="java-hint" id="java-hint"></div>
 
               <div class="progress-wrap" id="progress-wrap" style="display:none">
-                <div class="progress-label" id="progress-label">Загрузка...</div>
+                <div class="progress-top">
+                  <div class="progress-label" id="progress-label">Загрузка...</div>
+                  <button class="btn-stop" id="btn-stop" title="Остановить">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="11" height="11"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                    Остановить
+                  </button>
+                </div>
                 <div class="progress-bar">
                   <div class="progress-fill" id="progress-fill"></div>
                 </div>

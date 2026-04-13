@@ -17,3 +17,7 @@ npm-debug.log*
 # Системные файлы Windows
 Thumbs.db
 desktop.ini
+
+# Секрет для билда (не публиковать!)
+.admin-secret
+integrity.json

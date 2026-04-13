@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('launcher', {
   installNeoforge: (mcVersion, gameDir) => ipcRenderer.invoke('install-neoforge', mcVersion, gameDir),
   downloadMod: (modId, mcVersion, loader, gameDir) => ipcRenderer.invoke('download-mod-modrinth', modId, mcVersion, loader, gameDir),
   openPath: (p) => ipcRenderer.invoke('open-path', p),
+  killGame: () => ipcRenderer.invoke('kill-game'),
 
   on: (channel, callback) => {
     const allowed = ['auth-update', 'launch-log', 'launch-progress', 'launch-close', 'java-status', 'java-progress', 'update-progress', 'mod-status', 'mod-progress'];

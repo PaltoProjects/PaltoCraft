@@ -134,6 +134,7 @@ const OPT_MODS = {
 
 let activeOptLoader = null;
 let optVersionId = null;
+let _launching = false;
 
 let allVersions = [];
 let activeFilter = 'release';
@@ -308,6 +309,23 @@ document.getElementById('btn-open-modsdir').addEventListener('click', async () =
   if (!r || !r.success) appendConsole('error', 'Вы ещё не установили ни одной версии.');
 });
 
+function resetLaunchUI() {
+  _launching = false;
+  const btn = document.getElementById('btn-launch');
+  const wrap = document.getElementById('progress-wrap');
+  if (btn) { btn.disabled = false; }
+  if (wrap) wrap.style.display = 'none';
+  document.getElementById('progress-fill').style.width = '0%';
+  checkAndUpdateLaunchButton();
+}
+
+document.getElementById('btn-stop').addEventListener('click', async () => {
+  appendConsole('warn', 'Остановка...');
+  await window.launcher.killGame().catch(() => {});
+  resetLaunchUI();
+  appendConsole('warn', 'Запуск остановлен.');
+});
+
 async function ensureJava(version, gameDir, settings) {
   let javaPath = settings.javaPath || null;
   if (javaPath) return javaPath;
@@ -416,9 +434,7 @@ document.getElementById('btn-launch').addEventListener('click', async () => {
 
   window.launcher.on('launch-close', async (code) => {
     appendConsole('info', `Игра завершена с кодом ${code}`);
-    btn.disabled = false;
-    document.getElementById('progress-wrap').style.display = 'none';
-    await checkAndUpdateLaunchButton();
+    resetLaunchUI();
   });
 
   document.getElementById('progress-label').textContent = isDownload ? 'Загрузка Minecraft...' : 'Запуск...';
@@ -444,9 +460,7 @@ document.getElementById('btn-launch').addEventListener('click', async () => {
 
   if (!result.success) {
     appendConsole('error', 'Ошибка запуска: ' + result.error);
-    btn.disabled = false;
-    document.getElementById('progress-wrap').style.display = 'none';
-    await checkAndUpdateLaunchButton();
+    resetLaunchUI();
   }
 });
 
@@ -712,7 +726,8 @@ document.getElementById('btn-update').addEventListener('click', async () => {
 });
 
 async function handleOptLaunch(btn, mcVersion) {
-  if (!activeOptLoader) return;
+  if (!activeOptLoader || _launching) return;
+  _launching = true;
   btn.disabled = true;
   document.getElementById('progress-wrap').style.display = 'flex';
   document.getElementById('progress-fill').style.width = '0%';
@@ -805,9 +820,7 @@ async function handleOptLaunch(btn, mcVersion) {
     window.launcher.on('launch-log', (data) => appendConsole(data.type, data.msg));
     window.launcher.on('launch-close', async (code) => {
       appendConsole('info', `Игра завершена с кодом ${code}`);
-      btn.disabled = false;
-      document.getElementById('progress-wrap').style.display = 'none';
-      checkAndUpdateLaunchButton();
+      resetLaunchUI();
     });
 
     const result = await window.launcher.launch({
@@ -831,9 +844,7 @@ async function handleOptLaunch(btn, mcVersion) {
 
   } catch (e) {
     appendConsole('error', 'Ошибка: ' + e.message);
-    btn.disabled = false;
-    document.getElementById('progress-wrap').style.display = 'none';
-    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><polygon points="5 3 19 12 5 21 5 3"/></svg> Установить`;
+    resetLaunchUI();
   }
 }
 

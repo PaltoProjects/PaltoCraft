@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -248,6 +248,57 @@ ipcMain.handle('download-java', async (_, javaVer, gameDir) => {
 });
 
 let mainWindow;
+let activeGameProcess = null;
+let tray = null;
+let isQuitting = false;
+
+// ── Single-instance lock ──────────────────────────────────────────────────────
+const gotSingleLock = app.requestSingleInstanceLock();
+if (!gotSingleLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (!mainWindow.isVisible()) mainWindow.show();
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+function createTray() {
+  tray = new Tray(path.join(__dirname, 'assets', 'icon.ico'));
+  tray.setToolTip('PaltoCraft');
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Открыть PaltoCraft',
+      click: () => {
+        if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Выход',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+  tray.setContextMenu(menu);
+
+  tray.on('click', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isVisible()) {
+      mainWindow.focus();
+    } else {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -268,20 +319,31 @@ function createWindow() {
 
   mainWindow.loadFile('index.html');
   mainWindow.setMenuBarVisibility(false);
+
+  // Hide to tray instead of closing when X is clicked
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
+  });
 }
 
 app.whenReady().then(() => {
   try { checkIntegrity(); } catch {}
   createWindow();
+  createTray();
 });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+
+app.on('before-quit', () => { isQuitting = true; });
+app.on('window-all-closed', () => { /* kept alive via tray */ });
 
 ipcMain.on('window-minimize', () => mainWindow.minimize());
 ipcMain.on('window-maximize', () => {
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
   else mainWindow.maximize();
 });
-ipcMain.on('window-close', () => mainWindow.close());
+ipcMain.on('window-close', () => mainWindow.hide());
 
 ipcMain.handle('store-get', (_, key) => store.get(key));
 ipcMain.handle('store-set', (_, key, value) => store.set(key, value));
@@ -385,13 +447,14 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
       }
     });
     launcher.on('close', (code) => {
+      activeGameProcess = null;
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('launch-close', code);
         if (options.hideLauncher) mainWindow.show();
       }
     });
 
-    await launcher.launch(launchOptions);
+    activeGameProcess = await launcher.launch(launchOptions);
 
     if (options.closeLauncher) {
       mainWindow.close();
@@ -602,6 +665,18 @@ ipcMain.handle('download-mod-modrinth', async (_, modId, mcVersion, loader, game
   }
 });
 
+ipcMain.handle('kill-game', () => {
+  try {
+    if (activeGameProcess) {
+      activeGameProcess.kill('SIGKILL');
+      activeGameProcess = null;
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle('open-path', async (_, folderPath) => {
   try { await shell.openPath(folderPath); return { success: true }; }
   catch (err) { return { success: false, error: err.message }; }
@@ -609,8 +684,10 @@ ipcMain.handle('open-path', async (_, folderPath) => {
 
 ipcMain.handle('check-admin', (_, uuid) => {
   if (!uuid) return false;
-  const p = ['a9a1035e', '9319', '46de', '9f4b', 'a6124377dd9d'];
-  return String(uuid).replace(/-/g, '') === p.join('');
+  const h = '__ADMIN_HASH__';
+  if (!h || h.startsWith('__')) return false;
+  const hash = crypto.createHash('sha256').update(String(uuid).replace(/-/g, '')).digest('hex');
+  return hash === h;
 });
 
 ipcMain.handle('get-servers', async () => {
