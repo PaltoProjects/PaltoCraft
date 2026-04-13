@@ -100,6 +100,41 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
   setLoggedOut();
 });
 
+const OPT_VERSIONS = ['1.12.2', '1.16.5', '1.18.2', '1.20.2', '1.21.11'];
+
+const OPT_LOADERS = {
+  '1.12.2':  ['forge'],
+  '1.16.5':  ['fabric', 'forge'],
+  '1.18.2':  ['fabric', 'forge'],
+  '1.20.2':  ['fabric', 'forge'],
+  '1.21.11': ['fabric', 'neoforge']
+};
+
+const OPT_MODS = {
+  '1.12.2': {
+    forge: ['vanillafix']
+  },
+  '1.16.5': {
+    fabric: ['sodium', 'lithium', 'phosphor', 'ferrite-core', 'entityculling'],
+    forge:  ['rubidium', 'ferrite-core']
+  },
+  '1.18.2': {
+    fabric: ['sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast'],
+    forge:  ['rubidium', 'ferrite-core']
+  },
+  '1.20.2': {
+    fabric: ['sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast'],
+    forge:  ['rubidium']
+  },
+  '1.21.11': {
+    fabric:   ['sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast'],
+    neoforge: ['embeddium', 'ferrite-core']
+  }
+};
+
+let activeOptLoader = null;
+let optVersionId = null;
+
 let allVersions = [];
 let activeFilter = 'release';
 let isVersionDownloaded = false;
@@ -112,6 +147,26 @@ async function checkAndUpdateLaunchButton() {
     isVersionDownloaded = false;
     return;
   }
+
+  if (activeFilter === 'optimized') {
+    if (!activeOptLoader) {
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><polygon points="5 3 19 12 5 21 5 3"/></svg> Выберите загрузчик`;
+      return;
+    }
+    const settings = await getSettings();
+    const gameDir = settings.gameDir || await window.launcher.getDefaultGameDir();
+    const loaderCheck = await window.launcher.checkLoader(activeOptLoader, version, gameDir);
+    if (loaderCheck.installed) {
+      optVersionId = loaderCheck.versionId;
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><polygon points="5 3 19 12 5 21 5 3"/></svg> Играть`;
+    } else {
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Установить`;
+    }
+    const hint = document.getElementById('java-hint');
+    if (hint) hint.textContent = '';
+    return;
+  }
+
   const settings = await getSettings();
   const gameDir = settings.gameDir || await window.launcher.getDefaultGameDir();
   isVersionDownloaded = await window.launcher.checkVersion(gameDir, version);
@@ -156,6 +211,18 @@ async function loadVersions() {
 
 function renderVersions() {
   const select = document.getElementById('version-select');
+
+  if (activeFilter === 'optimized') {
+    select.innerHTML = OPT_VERSIONS.map(v => `<option value="${v}">${v}</option>`).join('');
+    updateLoaderButtons(OPT_VERSIONS[0]);
+    checkAndUpdateLaunchButton();
+    return;
+  }
+
+  document.getElementById('loader-row').style.display = 'none';
+  activeOptLoader = null;
+  optVersionId = null;
+
   const filtered = activeFilter === 'all'
     ? allVersions
     : allVersions.filter(v => v.type === activeFilter);
@@ -167,7 +234,32 @@ function renderVersions() {
   checkAndUpdateLaunchButton();
 }
 
-document.getElementById('version-select').addEventListener('change', checkAndUpdateLaunchButton);
+function updateLoaderButtons(version) {
+  const row = document.getElementById('loader-row');
+  if (!row || activeFilter !== 'optimized') { if (row) row.style.display = 'none'; return; }
+  const loaders = OPT_LOADERS[version] || [];
+  if (!loaders.length) { row.style.display = 'none'; return; }
+  if (!activeOptLoader || !loaders.includes(activeOptLoader)) activeOptLoader = loaders[0];
+  row.style.display = 'flex';
+  row.innerHTML = loaders.map(l =>
+    `<button class="loader-btn${activeOptLoader === l ? ' active' : ''}" data-loader="${l}">${l.charAt(0).toUpperCase() + l.slice(1)}</button>`
+  ).join('');
+  row.querySelectorAll('.loader-btn').forEach(btn => {
+    btn.onclick = () => {
+      if (activeOptLoader === btn.dataset.loader) return;
+      activeOptLoader = btn.dataset.loader;
+      optVersionId = null;
+      updateLoaderButtons(document.getElementById('version-select').value);
+      checkAndUpdateLaunchButton();
+    };
+  });
+}
+
+document.getElementById('version-select').addEventListener('change', () => {
+  optVersionId = null;
+  if (activeFilter === 'optimized') updateLoaderButtons(document.getElementById('version-select').value);
+  checkAndUpdateLaunchButton();
+});
 
 document.querySelectorAll('.filter-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -178,10 +270,76 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
   });
 });
 
+document.getElementById('btn-launch-arrow').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const dd = document.getElementById('launch-dropdown');
+  const arrow = document.getElementById('btn-launch-arrow');
+  const open = dd.style.display === 'flex';
+  dd.style.display = open ? 'none' : 'flex';
+  dd.style.flexDirection = 'column';
+  arrow.classList.toggle('open', !open);
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#launch-dropdown') && !e.target.closest('#btn-launch-arrow')) {
+    const dd = document.getElementById('launch-dropdown');
+    if (dd) dd.style.display = 'none';
+    const arrow = document.getElementById('btn-launch-arrow');
+    if (arrow) arrow.classList.remove('open');
+  }
+});
+
+document.getElementById('btn-open-gamedir').addEventListener('click', async () => {
+  document.getElementById('launch-dropdown').style.display = 'none';
+  document.getElementById('btn-launch-arrow').classList.remove('open');
+  const settings = await getSettings();
+  const gameDir = settings.gameDir || await window.launcher.getDefaultGameDir();
+  const r = await window.launcher.openPath(gameDir);
+  if (!r || !r.success) appendConsole('warn', 'Не удалось открыть папку: ' + gameDir);
+});
+
+document.getElementById('btn-open-modsdir').addEventListener('click', async () => {
+  document.getElementById('launch-dropdown').style.display = 'none';
+  document.getElementById('btn-launch-arrow').classList.remove('open');
+  const settings = await getSettings();
+  const gameDir = settings.gameDir || await window.launcher.getDefaultGameDir();
+  const modsDir = gameDir + '/mods';
+  const r = await window.launcher.openPath(modsDir);
+  if (!r || !r.success) appendConsole('error', 'Вы ещё не установили ни одной версии.');
+});
+
+async function ensureJava(version, gameDir, settings) {
+  let javaPath = settings.javaPath || null;
+  if (javaPath) return javaPath;
+  const jc = await window.launcher.checkJava(version, gameDir, allVersions);
+  if (jc.downloaded) return jc.javaExe;
+  appendConsole('info', `Java ${jc.javaVer} не найдена — загружаем...`);
+  document.getElementById('progress-label').textContent = `Загрузка Java ${jc.javaVer}...`;
+  window.launcher.off('java-status');
+  window.launcher.off('java-progress');
+  window.launcher.on('java-status', ({ stage, javaVer }) => {
+    const labels = { 'fetch-url': `Получение ссылки Java ${javaVer}...`, 'downloading': `Загрузка Java ${javaVer}...`, 'extracting': `Распаковка Java ${javaVer}...`, 'done': `Java ${javaVer} установлена` };
+    document.getElementById('progress-label').textContent = labels[stage] || stage;
+  });
+  window.launcher.on('java-progress', ({ received, total }) => {
+    const pct = total ? Math.round((received / total) * 100) : 0;
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-label').textContent = `Загрузка Java ${jc.javaVer} — ${pct}%`;
+  });
+  const res = await window.launcher.downloadJava(jc.javaVer, gameDir);
+  if (!res.success) throw new Error('Ошибка загрузки Java: ' + res.error);
+  return res.javaExe;
+}
+
 document.getElementById('btn-launch').addEventListener('click', async () => {
   const btn = document.getElementById('btn-launch');
   const version = document.getElementById('version-select').value;
   if (!version || btn.disabled) return;
+
+  if (activeFilter === 'optimized') {
+    await handleOptLaunch(btn, version);
+    return;
+  }
 
   const isDownload = !isVersionDownloaded;
   btn.disabled = true;
@@ -552,6 +710,132 @@ document.getElementById('btn-update').addEventListener('click', async () => {
     appendConsole('error', 'Ошибка загрузки обновления: ' + result.error);
   }
 });
+
+async function handleOptLaunch(btn, mcVersion) {
+  if (!activeOptLoader) return;
+  btn.disabled = true;
+  document.getElementById('progress-wrap').style.display = 'flex';
+  document.getElementById('progress-fill').style.width = '0%';
+
+  const settings = await getSettings();
+  const gameDir = settings.gameDir || await window.launcher.getDefaultGameDir();
+
+  const setProgress = (text, pct) => {
+    document.getElementById('progress-label').textContent = text;
+    if (pct !== undefined) document.getElementById('progress-fill').style.width = pct + '%';
+  };
+
+  try {
+    let versionId = optVersionId;
+
+    if (!versionId) {
+      const loaderCheck = await window.launcher.checkLoader(activeOptLoader, mcVersion, gameDir);
+      versionId = loaderCheck.versionId;
+
+      if (!loaderCheck.installed) {
+        if (activeOptLoader === 'fabric') {
+          setProgress('Установка Fabric Loader...', 10);
+          window.launcher.on('mod-status', ({ stage }) => {
+            if (stage === 'fetch-loader') setProgress('Получение версии Fabric...', 20);
+            if (stage === 'fetch-profile') setProgress('Загрузка профиля Fabric...', 40);
+            if (stage === 'done') setProgress('Fabric установлен!', 60);
+          });
+          const r = await window.launcher.installFabric(mcVersion, gameDir);
+          window.launcher.off('mod-status');
+          if (!r.success) throw new Error('Ошибка установки Fabric: ' + r.error);
+          versionId = r.versionId;
+          appendConsole('info', 'Fabric установлен: ' + versionId);
+        } else if (activeOptLoader === 'forge') {
+          setProgress('Загрузка Forge...', 10);
+          window.launcher.on('mod-progress', ({ received, total }) => {
+            const pct = total ? Math.round((received / total) * 50) + 10 : 30;
+            setProgress(`Загрузка Forge... ${(received/1024/1024).toFixed(1)} МБ`, pct);
+          });
+          const r = await window.launcher.installForge(mcVersion, gameDir);
+          window.launcher.off('mod-progress');
+          window.launcher.off('mod-status');
+          if (!r.success) throw new Error('Ошибка установки Forge: ' + r.error);
+          versionId = r.versionId;
+          appendConsole('info', 'Forge установлен: ' + versionId);
+        } else if (activeOptLoader === 'neoforge') {
+          setProgress('Загрузка NeoForge...', 10);
+          window.launcher.on('mod-progress', ({ received, total }) => {
+            const pct = total ? Math.round((received / total) * 50) + 10 : 30;
+            setProgress(`Загрузка NeoForge... ${(received/1024/1024).toFixed(1)} МБ`, pct);
+          });
+          const r = await window.launcher.installNeoforge(mcVersion, gameDir);
+          window.launcher.off('mod-progress');
+          window.launcher.off('mod-status');
+          if (!r.success) throw new Error('Ошибка установки NeoForge: ' + r.error);
+          versionId = r.versionId;
+          appendConsole('info', 'NeoForge установлен: ' + versionId);
+        }
+      }
+      optVersionId = versionId;
+    }
+
+    const mods = (OPT_MODS[mcVersion] || {})[activeOptLoader] || [];
+    if (mods.length) {
+      appendConsole('info', `Проверка ${mods.length} модов...`);
+      for (let i = 0; i < mods.length; i++) {
+        const modId = mods[i];
+        setProgress(`Мод ${i + 1}/${mods.length}: ${modId}`, 60 + Math.round((i / mods.length) * 25));
+        const r = await window.launcher.downloadMod(modId, mcVersion, activeOptLoader, gameDir);
+        if (r.success && !r.skipped) appendConsole('info', `${modId} — скачан`);
+        else if (r.skipped) appendConsole('info', `${modId} — уже есть`);
+        else appendConsole('warn', `${modId} — не найден для ${mcVersion}/${activeOptLoader}`);
+      }
+    }
+
+    setProgress('Подготовка Java...', 85);
+    const javaPath = await ensureJava(mcVersion, gameDir, settings);
+
+    setProgress('Запуск...', 95);
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Запуск...`;
+
+    window.launcher.off('launch-progress');
+    window.launcher.off('launch-log');
+    window.launcher.off('launch-close');
+
+    window.launcher.on('launch-progress', (e) => {
+      const pct = e.total ? Math.round((e.task / e.total) * 100) : 0;
+      document.getElementById('progress-fill').style.width = pct + '%';
+      document.getElementById('progress-label').textContent = `${e.type || 'Загрузка'} — ${pct}%`;
+    });
+    window.launcher.on('launch-log', (data) => appendConsole(data.type, data.msg));
+    window.launcher.on('launch-close', async (code) => {
+      appendConsole('info', `Игра завершена с кодом ${code}`);
+      btn.disabled = false;
+      document.getElementById('progress-wrap').style.display = 'none';
+      checkAndUpdateLaunchButton();
+    });
+
+    const result = await window.launcher.launch({
+      version: versionId,
+      versionType: activeOptLoader,
+      gameDir,
+      maxRam: settings.maxRam || 4,
+      minRam: settings.minRam || 2,
+      javaPath: javaPath || 'java',
+      jvmArgs: settings.jvmArgs || '',
+      winWidth: settings.winWidth || 854,
+      winHeight: settings.winHeight || 480,
+      fullscreen: settings.fullscreen || false,
+      hideLauncher: settings.hideLauncher !== false,
+      closeLauncher: settings.closeLauncher || false
+    });
+
+    if (!result.success) throw new Error(result.error);
+    if (settings.closeLauncher) return;
+    if (settings.hideLauncher) { /* window hidden */ }
+
+  } catch (e) {
+    appendConsole('error', 'Ошибка: ' + e.message);
+    btn.disabled = false;
+    document.getElementById('progress-wrap').style.display = 'none';
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><polygon points="5 3 19 12 5 21 5 3"/></svg> Установить`;
+  }
+}
 
 function _esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

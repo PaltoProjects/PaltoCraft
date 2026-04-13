@@ -113,7 +113,9 @@
                   <button class="filter-btn" data-filter="old_beta">Beta</button>
                   <button class="filter-btn" data-filter="old_alpha">Alpha</button>
                   <button class="filter-btn" data-filter="all">Все</button>
+                  <button class="filter-btn" data-filter="optimized">⚡ Оптимизированные</button>
                 </div>
+                <div class="loader-row" id="loader-row" style="display:none"></div>
                 <select class="select" id="version-select">
                   <option value="">Загрузка версий...</option>
                 </select>
@@ -128,10 +130,25 @@
                 </div>
               </div>
 
-              <button class="btn btn-launch" id="btn-launch">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Играть
-              </button>
+              <div class="launch-btn-row">
+                <button class="btn btn-launch" id="btn-launch">
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  Играть
+                </button>
+                <button class="btn-launch-arrow" id="btn-launch-arrow" title="Дополнительно">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+              </div>
+              <div class="launch-dropdown" id="launch-dropdown" style="display:none">
+                <button class="launch-drop-item" id="btn-open-gamedir">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                  Корневая папка игры
+                </button>
+                <button class="launch-drop-item" id="btn-open-modsdir">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                  Папка с модами
+                </button>
+              </div>
             </div>
           </div>
         </div>

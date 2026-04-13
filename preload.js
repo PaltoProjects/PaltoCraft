@@ -31,8 +31,15 @@ contextBridge.exposeInMainWorld('launcher', {
   checkAdmin: (uuid) => ipcRenderer.invoke('check-admin', uuid),
   getServers: () => ipcRenderer.invoke('get-servers'),
 
+  checkLoader: (loader, mcVersion, gameDir) => ipcRenderer.invoke('check-loader', loader, mcVersion, gameDir),
+  installFabric: (mcVersion, gameDir) => ipcRenderer.invoke('install-fabric', mcVersion, gameDir),
+  installForge: (mcVersion, gameDir) => ipcRenderer.invoke('install-forge', mcVersion, gameDir),
+  installNeoforge: (mcVersion, gameDir) => ipcRenderer.invoke('install-neoforge', mcVersion, gameDir),
+  downloadMod: (modId, mcVersion, loader, gameDir) => ipcRenderer.invoke('download-mod-modrinth', modId, mcVersion, loader, gameDir),
+  openPath: (p) => ipcRenderer.invoke('open-path', p),
+
   on: (channel, callback) => {
-    const allowed = ['auth-update', 'launch-log', 'launch-progress', 'launch-close', 'java-status', 'java-progress', 'update-progress'];
+    const allowed = ['auth-update', 'launch-log', 'launch-progress', 'launch-close', 'java-status', 'java-progress', 'update-progress', 'mod-status', 'mod-progress'];
     if (allowed.includes(channel)) {
       ipcRenderer.on(channel, (_, ...args) => callback(...args));
     }

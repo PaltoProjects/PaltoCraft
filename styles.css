@@ -247,6 +247,51 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 
 .java-hint { font-size: 11px; color: var(--muted); min-height: 14px; }
 
+.loader-row {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.loader-btn {
+  padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); font-size: 12px; font-weight: 600;
+  font-family: inherit; cursor: pointer; transition: all .15s;
+}
+.loader-btn:hover { border-color: var(--accent); color: var(--text); }
+.loader-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.launch-btn-row {
+  display: flex; gap: 0; width: 100%;
+}
+.launch-btn-row .btn-launch {
+  border-radius: var(--radius) 0 0 var(--radius); flex: 1;
+}
+.btn-launch-arrow {
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+  border: none; border-left: 1px solid rgba(255,255,255,.15);
+  color: #fff; cursor: pointer; padding: 0 13px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .18s; flex-shrink: 0;
+  box-shadow: 0 4px 24px rgba(91,106,245,.3);
+}
+.btn-launch-arrow:hover { filter: brightness(1.15); }
+.btn-launch-arrow.open svg { transform: rotate(180deg); }
+.btn-launch-arrow svg { transition: transform .2s; }
+
+.launch-dropdown {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+}
+.launch-drop-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 10px 14px; background: transparent; border: none;
+  color: var(--text); font-size: 12px; font-weight: 500;
+  font-family: inherit; cursor: pointer; transition: background .15s;
+  white-space: nowrap;
+}
+.launch-drop-item:hover { background: var(--surface2); }
+.launch-drop-item svg { color: var(--muted); flex-shrink: 0; }
+
 .progress-wrap { width: 100%; display: flex; flex-direction: column; gap: 6px; }
 .progress-label { font-size: 12px; color: var(--muted); }
 .progress-bar { height: 4px; background: var(--surface); border-radius: 4px; overflow: hidden; }
