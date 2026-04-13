@@ -77,9 +77,6 @@ ShowUninstDetails show
 Section "PaltoCraft" SecMain
   SectionIn RO  ; обязательная секция
 
-  ; Снимаем защиту записи перед установкой (нужно для обновлений)
-  ExecWait 'icacls "$INSTDIR" /reset /T /C /Q'
-
   SetOutPath "$INSTDIR"
   SetOverwrite on
 
