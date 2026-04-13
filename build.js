@@ -48,13 +48,45 @@ function obfuscateJS() {
   }
 }
 
+function minifyHTML(src) {
+  return src
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\n\s*/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/>\s+</g, '><')
+    .replace(/\s+>/g, '>')
+    .replace(/<\s+/g, '<')
+    .trim();
+}
+
+function minifyCSS(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\s*\n\s*/g, '')
+    .replace(/\s*{\s*/g, '{')
+    .replace(/\s*}\s*/g, '}')
+    .replace(/\s*:\s*/g, ':')
+    .replace(/\s*;\s*/g, ';')
+    .replace(/\s*,\s*/g, ',')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function copyFiles() {
   for (const file of COPY_FILES) {
     const src = path.join(SRC_DIR, file);
-    if (fs.existsSync(src)) {
-      fs.copyFileSync(src, path.join(BUILD_DIR, file));
+    if (!fs.existsSync(src)) continue;
+    let content = fs.readFileSync(src, 'utf8');
+    if (file.endsWith('.html')) {
+      content = minifyHTML(content);
+      console.log(`✓ Minified + copied ${file}`);
+    } else if (file.endsWith('.css')) {
+      content = minifyCSS(content);
+      console.log(`✓ Minified + copied ${file}`);
+    } else {
       console.log(`✓ Copied ${file}`);
     }
+    fs.writeFileSync(path.join(BUILD_DIR, file), content, 'utf8');
   }
 }
 
@@ -124,6 +156,16 @@ function buildInstaller() {
   console.log('✓ Installer: dist/installer/PaltoCraft-Setup-1.0.3.exe');
 }
 
+function packInstaller() {
+  const upx = 'C:\\upx\\upx.exe';
+  const exe = path.join(SRC_DIR, 'dist', 'installer', 'PaltoCraft-Setup-1.0.3.exe');
+  if (!fs.existsSync(upx)) { console.log('⚠ UPX не найден — пропускаем упаковку'); return; }
+  if (!fs.existsSync(exe)) { console.log('⚠ Installer не найден — пропускаем UPX'); return; }
+  console.log('\n📦 Packing installer with UPX...');
+  execSync(`"${upx}" --best --lzma "${exe}"`, { stdio: 'inherit' });
+  console.log('✓ UPX done');
+}
+
 console.log('🔨 PaltoCraft Build\n');
 clean();
 obfuscateJS();
@@ -132,4 +174,5 @@ copyDirs();
 generateIntegrity();
 package_();
 buildInstaller();
+packInstaller();
 console.log('\n✅ Build complete!');
