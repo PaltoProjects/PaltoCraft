@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('launcher', {
   checkAdmin: (uuid) => ipcRenderer.invoke('check-admin', uuid),
   getServers: () => ipcRenderer.invoke('get-servers'),
 
+  ensureVanilla: (mcVersion, gameDir) => ipcRenderer.invoke('ensure-vanilla', mcVersion, gameDir),
   checkLoader: (loader, mcVersion, gameDir) => ipcRenderer.invoke('check-loader', loader, mcVersion, gameDir),
   installFabric: (mcVersion, gameDir) => ipcRenderer.invoke('install-fabric', mcVersion, gameDir),
   installForge: (mcVersion, gameDir) => ipcRenderer.invoke('install-forge', mcVersion, gameDir),

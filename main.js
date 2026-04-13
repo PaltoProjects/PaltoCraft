@@ -366,6 +366,50 @@ ipcMain.handle('check-version', (_, gameDir, version) => {
   return fs.existsSync(jarPath);
 });
 
+ipcMain.handle('ensure-vanilla', async (_, mcVersion, gameDir) => {
+  const send = (data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-status', data); };
+  try {
+    const dir = gameDir || getDefaultGameDir();
+    const versionDir = path.join(dir, 'versions', mcVersion);
+    const versionJsonPath = path.join(versionDir, mcVersion + '.json');
+    const versionJarPath = path.join(versionDir, mcVersion + '.jar');
+
+    if (fs.existsSync(versionJarPath) && fs.existsSync(versionJsonPath)) {
+      return { success: true, already: true };
+    }
+
+    if (!fs.existsSync(versionDir)) fs.mkdirSync(versionDir, { recursive: true });
+
+    send({ stage: 'fetch-vanilla-manifest', ver: mcVersion });
+    const manifest = await fetchJson('https://launchermeta.mojang.com/mc/game/version_manifest.json');
+    const entry = (manifest.versions || []).find(v => v.id === mcVersion);
+    if (!entry) throw new Error('Версия ' + mcVersion + ' не найдена в манифесте Mojang');
+
+    let versionData;
+    if (!fs.existsSync(versionJsonPath)) {
+      send({ stage: 'fetch-vanilla-json', ver: mcVersion });
+      versionData = await fetchJson(entry.url);
+      fs.writeFileSync(versionJsonPath, JSON.stringify(versionData, null, 2));
+    } else {
+      versionData = JSON.parse(fs.readFileSync(versionJsonPath, 'utf8'));
+    }
+
+    if (!fs.existsSync(versionJarPath)) {
+      const jarUrl = versionData.downloads && versionData.downloads.client && versionData.downloads.client.url;
+      if (!jarUrl) throw new Error('Не найдена ссылка на jar для ' + mcVersion);
+      send({ stage: 'downloading-vanilla', ver: mcVersion });
+      await downloadFile(jarUrl, versionJarPath, (received, total) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-progress', { received, total });
+      });
+    }
+
+    send({ stage: 'done-vanilla', ver: mcVersion });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle('auth-microsoft', async () => {
   try {
     const { Auth } = require('msmc');

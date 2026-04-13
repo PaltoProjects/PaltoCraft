@@ -802,6 +802,29 @@ async function handleOptLaunch(btn, mcVersion) {
       }
     }
 
+    // Убедиться что ванильный jar скачан (нужен MCLC для inheritsFrom)
+    const vanillaJarExists = await window.launcher.checkVersion(gameDir, mcVersion);
+    if (!vanillaJarExists) {
+      appendConsole('info', `Ванилла ${mcVersion} не найдена — скачиваем...`);
+      setProgress(`Скачиваем Minecraft ${mcVersion}...`, 62);
+      window.launcher.off('mod-status');
+      window.launcher.off('mod-progress');
+      window.launcher.on('mod-status', ({ stage }) => {
+        if (stage === 'fetch-vanilla-manifest') setProgress('Получение манифеста Mojang...', 64);
+        if (stage === 'fetch-vanilla-json')     setProgress(`Загрузка ${mcVersion}.json...`, 66);
+        if (stage === 'downloading-vanilla')    setProgress(`Скачиваем ${mcVersion}.jar...`, 68);
+      });
+      window.launcher.on('mod-progress', ({ received, total }) => {
+        const pct = total ? Math.round((received / total) * 15) + 68 : 72;
+        setProgress(`Скачиваем ${mcVersion}.jar — ${(received/1024/1024).toFixed(1)} МБ`, pct);
+      });
+      const vr = await window.launcher.ensureVanilla(mcVersion, gameDir);
+      window.launcher.off('mod-status');
+      window.launcher.off('mod-progress');
+      if (!vr.success) throw new Error('Ошибка загрузки ванильной версии: ' + vr.error);
+      appendConsole('info', `Minecraft ${mcVersion} скачан успешно.`);
+    }
+
     setProgress('Подготовка Java...', 85);
     const javaPath = await ensureJava(mcVersion, gameDir, settings);
 
