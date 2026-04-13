@@ -271,7 +271,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  checkIntegrity();
+  try { checkIntegrity(); } catch {}
   createWindow();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

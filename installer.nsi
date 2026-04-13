@@ -100,8 +100,6 @@ Section "PaltoCraft" SecMain
   ; Создаём деинсталлятор
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
-  ; Защищаем файлы от изменения (запрет записи для всех)
-  ExecWait 'icacls "$INSTDIR\resources" /deny *S-1-1-0:(W,D,DC,WD,AD) /T /C /Q'
 
   ; Ярлык в меню Пуск
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"
