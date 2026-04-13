@@ -483,6 +483,22 @@ ipcMain.handle('install-fabric', async (_, mcVersion, gameDir) => {
     const versionDir = path.join(dir, 'versions', versionId);
     if (!fs.existsSync(versionDir)) fs.mkdirSync(versionDir, { recursive: true });
     fs.writeFileSync(path.join(versionDir, versionId + '.json'), JSON.stringify(profile, null, 2));
+
+    const baseVersionDir = path.join(dir, 'versions', mcVersion);
+    const baseVersionJson = path.join(baseVersionDir, mcVersion + '.json');
+    if (!fs.existsSync(baseVersionJson)) {
+      send({ stage: 'fetch-base', ver: mcVersion });
+      try {
+        const manifest = await fetchJson('https://launchermeta.mojang.com/mc/game/version_manifest.json');
+        const entry = (manifest.versions || []).find(v => v.id === mcVersion);
+        if (entry) {
+          const baseData = await fetchJson(entry.url);
+          if (!fs.existsSync(baseVersionDir)) fs.mkdirSync(baseVersionDir, { recursive: true });
+          fs.writeFileSync(baseVersionJson, JSON.stringify(baseData, null, 2));
+        }
+      } catch {}
+    }
+
     send({ stage: 'done', ver: mcVersion });
     return { success: true, versionId };
   } catch (err) {
