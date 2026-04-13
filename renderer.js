@@ -847,8 +847,9 @@ async function handleOptLaunch(btn, mcVersion) {
     });
 
     const result = await window.launcher.launch({
-      version: versionId,
-      versionType: activeOptLoader,
+      version: mcVersion,        // базовая ванильная версия (для downloads.client)
+      customVersion: versionId,  // fabric/forge/neoforge версия (custom в MCLC)
+      versionType: 'release',
       gameDir,
       maxRam: settings.maxRam || 4,
       minRam: settings.minRam || 2,

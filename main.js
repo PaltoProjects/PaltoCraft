@@ -449,13 +449,17 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
       fs.mkdirSync(gameDir, { recursive: true });
     }
 
+    // For modded versions (Fabric/Forge/NeoForge): use MCLC's 'custom' field.
+    // options.version = base MC version (e.g. '1.21.11')
+    // options.customVersion = loader version ID (e.g. 'fabric-loader-0.16.x-1.21.11')
+    const versionBlock = options.customVersion
+      ? { number: options.version, type: options.versionType || 'release', custom: options.customVersion }
+      : { number: options.version, type: options.versionType || 'release' };
+
     const launchOptions = {
       authorization: storedToken,
       root: gameDir,
-      version: {
-        number: options.version,
-        type: options.versionType || 'release'
-      },
+      version: versionBlock,
       memory: {
         max: `${options.maxRam || 4}G`,
         min: `${options.minRam || 2}G`
