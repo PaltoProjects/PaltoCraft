@@ -444,8 +444,28 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
       return { success: false, error: 'Not authenticated' };
     }
 
-    // Refresh Microsoft session before launching to fix "Invalid session" on online servers
+    // Check if stored JWT access token is expired
     const refreshToken = store.get('auth-refresh');
+    let tokenExpired = false;
+    try {
+      const parts = (storedToken.access_token || '').split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+        if (payload.exp && payload.exp * 1000 < Date.now()) {
+          tokenExpired = true;
+        }
+      }
+    } catch {}
+
+    if (tokenExpired && !refreshToken) {
+      // No refresh token (old login) — force re-login
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('launch-log', { type: 'error', msg: 'Сессия истекла. Выйдите из аккаунта и войдите снова.' });
+      }
+      return { success: false, error: 'Сессия истекла — выйдите из аккаунта и войдите снова в лаунчере.' };
+    }
+
+    // Refresh Microsoft session before launching to fix "Invalid session" on online servers
     if (refreshToken) {
       try {
         const { Auth } = require('msmc');
@@ -460,7 +480,10 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
         }
       } catch (refreshErr) {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('launch-log', { type: 'warn', msg: 'Не удалось обновить сессию: ' + refreshErr.message + ' — используем сохранённый токен.' });
+          mainWindow.webContents.send('launch-log', { type: 'warn', msg: 'Не удалось обновить сессию: ' + refreshErr.message });
+        }
+        if (tokenExpired) {
+          return { success: false, error: 'Сессия истекла — выйдите из аккаунта и войдите снова.' };
         }
       }
     }
