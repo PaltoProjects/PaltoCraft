@@ -426,6 +426,7 @@ ipcMain.handle('auth-microsoft', async () => {
 
     store.set('auth-token', mclcToken);
     store.set('auth-profile', profile);
+    store.set('auth-refresh', xboxManager.save()); // Microsoft refresh token
 
     return { success: true, token: mclcToken, profile };
   } catch (err) {
@@ -438,9 +439,30 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
     const { Client } = require('minecraft-launcher-core');
     const launcher = new Client();
 
-    const storedToken = store.get('auth-token');
+    let storedToken = store.get('auth-token');
     if (!storedToken) {
       return { success: false, error: 'Not authenticated' };
+    }
+
+    // Refresh Microsoft session before launching to fix "Invalid session" on online servers
+    const refreshToken = store.get('auth-refresh');
+    if (refreshToken) {
+      try {
+        const { Auth } = require('msmc');
+        const authManager = new Auth('select_account');
+        const xboxManager = await authManager.refresh(refreshToken);
+        const mcToken = await xboxManager.getMinecraft();
+        storedToken = mcToken.mclc();
+        store.set('auth-token', storedToken);
+        store.set('auth-refresh', xboxManager.save());
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('launch-log', { type: 'info', msg: 'Сессия авторизации обновлена.' });
+        }
+      } catch (refreshErr) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('launch-log', { type: 'warn', msg: 'Не удалось обновить сессию: ' + refreshErr.message + ' — используем сохранённый токен.' });
+        }
+      }
     }
 
     const gameDir = options.gameDir || getDefaultGameDir();

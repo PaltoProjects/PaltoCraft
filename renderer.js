@@ -988,6 +988,14 @@ function _renderAdminRows() {
   });
 }
 
+// Migrate: ensure hideLauncher is true by default (hide to tray when game starts)
+(async () => {
+  const v = await window.launcher.storeGet('hideLauncher');
+  if (v === undefined || v === null) {
+    await window.launcher.storeSet('hideLauncher', true);
+  }
+})();
+
 appendConsole('info', 'PaltoCraft запущен.');
 appendConsole('info', `Платформа: ${navigator.platform} | Electron`);
 loadAuth();
