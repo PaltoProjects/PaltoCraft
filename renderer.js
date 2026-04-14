@@ -115,19 +115,19 @@ const OPT_MODS = {
     forge: ['vanillafix']
   },
   '1.16.5': {
-    fabric: ['sodium', 'lithium', 'phosphor', 'ferrite-core', 'entityculling'],
+    fabric: ['fabric-api', 'sodium', 'lithium', 'phosphor', 'ferrite-core', 'entityculling'],
     forge:  ['rubidium', 'ferrite-core']
   },
   '1.18.2': {
-    fabric: ['sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast'],
+    fabric: ['fabric-api', 'sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast'],
     forge:  ['rubidium', 'ferrite-core']
   },
   '1.20.2': {
-    fabric: ['sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast'],
+    fabric: ['fabric-api', 'sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast'],
     forge:  ['rubidium']
   },
   '1.21.11': {
-    fabric:   ['sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast'],
+    fabric:   ['fabric-api', 'sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast'],
     neoforge: ['embeddium', 'ferrite-core']
   }
 };
