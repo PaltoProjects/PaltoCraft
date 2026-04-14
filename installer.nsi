@@ -77,6 +77,11 @@ ShowUninstDetails show
 Section "PaltoCraft" SecMain
   SectionIn RO  ; обязательная секция
 
+  ; Закрываем работающий лаунчер перед установкой
+  DetailPrint "Завершаем старую версию лаунчера..."
+  ExecWait 'taskkill /f /im "${APP_EXE}"'
+  Sleep 1500
+
   SetOutPath "$INSTDIR"
   SetOverwrite on
 
