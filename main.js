@@ -746,7 +746,9 @@ ipcMain.handle('download-mod-modrinth', async (_, modId, mcVersion, loader, game
     const file = versions[0].files.find(f => f.primary) || versions[0].files[0];
     if (!file) return { success: false, notFound: true };
     const dir = gameDir || getDefaultGameDir();
-    const modsDir = path.join(dir, 'mods');
+    // Use version-specific subfolder so mods don't conflict across versions
+    // Fabric Loader automatically loads mods from mods/{mcVersion}/ subfolder
+    const modsDir = path.join(dir, 'mods', mcVersion);
     if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
     const dest = path.join(modsDir, file.filename);
     if (fs.existsSync(dest)) return { success: true, skipped: true };

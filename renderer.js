@@ -304,7 +304,11 @@ document.getElementById('btn-open-modsdir').addEventListener('click', async () =
   document.getElementById('btn-launch-arrow').classList.remove('open');
   const settings = await getSettings();
   const gameDir = settings.gameDir || await window.launcher.getDefaultGameDir();
-  const modsDir = gameDir + '/mods';
+  const version = document.getElementById('version-select').value;
+  // For optimized versions mods are in mods/{version}/, otherwise mods/
+  const modsDir = (activeFilter === 'optimized' && version)
+    ? gameDir + '/mods/' + version
+    : gameDir + '/mods';
   const r = await window.launcher.openPath(modsDir);
   if (!r || !r.success) appendConsole('error', 'Вы ещё не установили ни одной версии.');
 });
