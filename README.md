@@ -11,7 +11,7 @@
 [![License](https://img.shields.io/github/license/PaltoCraft/PaltoCraft?style=flat-square&color=7c3aed&label=Лицензия)](LICENSE)
 [![Platform](https://img.shields.io/badge/Платформа-Windows-0078d4?style=flat-square)](https://github.com/PaltoCraft/PaltoCraft/releases/latest)
 
-[**Скачать**](https://github.com/PaltoCraft/PaltoCraft/releases/latest) · [Сообщить об ошибке](https://github.com/PaltoCraft/PaltoCraft/issues) · [Предложить идею](https://github.com/PaltoCraft/PaltoCraft/issues)
+[**Скачать**](https://github.com/PaltoCraft/PaltoCraft/releases/latest) · [Сообщить об ошибке](https://github.com/PaltoCraft/PaltoCraft/issues) · [Предложить идею](https://github.com/PaltoCraft/PaltoCraft/issues) · [Сайт](https://paltocraft.github.io/PaltoCraft/#)
 
 </div>
 
