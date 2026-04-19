@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PaltoCraft — Неофициальный лаунчер Minecraft</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0f0f1e;
+    --bg-2: #1a1a2e;
+    --bg-3: #12121f;
+    --panel: #1e1e35;
+    --green: #4CAF50;
+    --green-bright: #5fdb63;
+    --green-dark: #2e7d32;
+    --green-darker: #1b5e20;
+    --text: #ffffff;
+    --text-dim: #b8b8d1;
+    --border: #2a2a45;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+    image-rendering: pixelated;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ===== Utility pixel text rendering ===== */
+  svg.pixel { shape-rendering: crispEdges; }
+
+  /* ===== Starfield background ===== */
+  .stars {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .star {
+    position: absolute;
+    width: 3px; height: 3px;
+    background: #fff;
+    box-shadow: 0 0 4px #fff;
+    animation: twinkle 3s infinite ease-in-out;
+  }
+  .star.sm { width: 2px; height: 2px; }
+  .star.lg { width: 4px; height: 4px; }
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.15; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.3); }
+  }
+
+  /* ===== Navbar ===== */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    background: rgba(15, 15, 30, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 2px solid var(--border);
+    padding: 14px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 14px;
+    color: var(--text);
+    text-decoration: none;
+    letter-spacing: 1px;
+  }
+  .nav-logo span { color: var(--green-bright); }
+  .nav-links {
+    display: flex;
+    gap: 28px;
+    align-items: center;
+  }
+  .nav-links a {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: color 0.2s;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .nav-links a:hover { color: var(--green-bright); }
+
+  /* ===== Hero ===== */
+  .hero {
+    min-height: 100vh;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 120px 24px 80px;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(76, 175, 80, 0.12) 0%, transparent 60%),
+      linear-gradient(180deg, #0a0a1a 0%, #12122a 40%, #1a1a2e 100%);
+    overflow: hidden;
+  }
+
+  /* Pixel ground silhouette at hero bottom */
+  .hero-ground {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 80px;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,0.4));
+    z-index: 1;
+  }
+  .hero-ground::before {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 40px;
+    background-image:
+      linear-gradient(90deg, #2d4a1a 50%, transparent 50%),
+      linear-gradient(90deg, #3d5f24 50%, transparent 50%);
+    background-size: 40px 20px, 40px 40px;
+    background-position: 0 0, 20px 0;
+    background-repeat: repeat-x;
+    opacity: 0.6;
+  }
+
+  .hero h1 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(36px, 8vw, 88px);
+    color: var(--text);
+    letter-spacing: 4px;
+    line-height: 1.2;
+    margin-bottom: 28px;
+    position: relative;
+    z-index: 2;
+    text-shadow:
+      4px 4px 0 var(--green-dark),
+      8px 8px 0 var(--green-darker),
+      12px 12px 0 rgba(0,0,0,0.6);
+    animation: heroIn 0.9s cubic-bezier(.2,.8,.2,1) both;
+  }
+  @keyframes heroIn {
+    from { opacity: 0; transform: translateY(-30px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero-subtitle {
+    font-family: 'VT323', monospace;
+    font-size: clamp(22px, 3vw, 30px);
+    color: var(--green-bright);
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+    position: relative;
+    z-index: 2;
+    animation: heroIn 0.9s 0.15s cubic-bezier(.2,.8,.2,1) both;
+  }
+
+  .hero-desc {
+    font-family: 'VT323', monospace;
+    font-size: clamp(18px, 2vw, 22px);
+    color: var(--text-dim);
+    max-width: 680px;
+    margin: 0 auto 40px;
+    position: relative;
+    z-index: 2;
+    line-height: 1.4;
+    animation: heroIn 0.9s 0.3s cubic-bezier(.2,.8,.2,1) both;
+  }
+
+  .hero-buttons {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+    position: relative;
+    z-index: 2;
+    animation: heroIn 0.9s 0.45s cubic-bezier(.2,.8,.2,1) both;
+  }
+
+  .btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    padding: 18px 28px;
+    text-decoration: none;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+    image-rendering: pixelated;
+  }
+  .btn-primary {
+    background: var(--green);
+    box-shadow:
+      inset 0 -4px 0 var(--green-darker),
+      inset 4px 0 0 var(--green-bright),
+      inset -4px 0 0 var(--green-dark),
+      0 0 0 4px #000,
+      0 0 0 6px var(--green-dark);
+  }
+  .btn-primary:hover {
+    background: var(--green-bright);
+    box-shadow:
+      inset 0 -4px 0 var(--green-dark),
+      inset 4px 0 0 #7fed82,
+      inset -4px 0 0 var(--green),
+      0 0 0 4px #000,
+      0 0 0 6px var(--green-bright),
+      0 0 30px rgba(76, 175, 80, 0.8),
+      0 0 60px rgba(76, 175, 80, 0.4);
+    transform: translateY(-2px);
+  }
+  .btn-secondary {
+    background: var(--panel);
+    color: var(--text);
+    box-shadow:
+      inset 0 -4px 0 #0f0f1e,
+      inset 4px 0 0 #2e2e4a,
+      inset -4px 0 0 #15152a,
+      0 0 0 4px #000,
+      0 0 0 6px var(--border);
+  }
+  .btn-secondary:hover {
+    box-shadow:
+      inset 0 -4px 0 #0f0f1e,
+      inset 4px 0 0 #2e2e4a,
+      inset -4px 0 0 #15152a,
+      0 0 0 4px #000,
+      0 0 0 6px var(--green),
+      0 0 30px rgba(76, 175, 80, 0.5);
+    transform: translateY(-2px);
+  }
+
+  .scroll-down {
+    position: absolute;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    animation: bounce 1.8s infinite;
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(12px); }
+  }
+
+  /* ===== Section framework ===== */
+  section {
+    position: relative;
+    padding: 100px 24px;
+    z-index: 2;
+  }
+  .container { max-width: 1160px; margin: 0 auto; }
+
+  .section-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(22px, 4vw, 36px);
+    color: var(--text);
+    text-align: center;
+    margin-bottom: 20px;
+    letter-spacing: 3px;
+    text-shadow: 3px 3px 0 var(--green-dark), 6px 6px 0 rgba(0,0,0,0.5);
+  }
+  .section-underline {
+    width: 120px;
+    height: 6px;
+    background: var(--green);
+    margin: 0 auto 60px;
+    box-shadow: 0 0 16px var(--green), 4px 4px 0 var(--green-dark);
+  }
+
+  /* ===== What is PaltoCraft ===== */
+  .about {
+    background: linear-gradient(180deg, #1a1a2e 0%, #161628 100%);
+    border-top: 4px solid var(--border);
+    border-bottom: 4px solid var(--border);
+  }
+  .about-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    gap: 60px;
+    align-items: center;
+  }
+  .about-image {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .about-image svg {
+    max-width: 100%;
+    height: auto;
+    filter: drop-shadow(6px 6px 0 rgba(0,0,0,0.6));
+  }
+  .about-text {
+    font-family: 'VT323', monospace;
+    font-size: 22px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .about-text strong {
+    color: var(--green-bright);
+    font-weight: normal;
+  }
+
+  /* ===== Features ===== */
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 24px;
+  }
+  .feature-card {
+    background: var(--panel);
+    padding: 36px 28px;
+    position: relative;
+    text-align: center;
+    border: 4px solid var(--border);
+    transition: all 0.25s ease;
+    cursor: default;
+  }
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border: 4px solid transparent;
+    pointer-events: none;
+    transition: border-color 0.25s ease;
+  }
+  .feature-card:hover {
+    transform: translateY(-6px);
+    border-color: var(--green);
+    box-shadow: 0 0 40px rgba(76, 175, 80, 0.35), 8px 8px 0 rgba(0,0,0,0.4);
+    background: #22223f;
+  }
+  .feature-icon {
+    margin: 0 auto 20px;
+    display: flex;
+    justify-content: center;
+  }
+  .feature-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    color: var(--green-bright);
+    margin-bottom: 14px;
+    letter-spacing: 1px;
+    line-height: 1.5;
+  }
+  .feature-desc {
+    font-family: 'VT323', monospace;
+    font-size: 20px;
+    color: var(--text-dim);
+    line-height: 1.3;
+  }
+
+  /* ===== How to start ===== */
+  .howto {
+    background: linear-gradient(180deg, #161628 0%, #1a1a2e 100%);
+    border-top: 4px solid var(--border);
+  }
+  .steps {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr;
+    gap: 24px;
+    align-items: center;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .step {
+    background: var(--panel);
+    padding: 40px 24px;
+    text-align: center;
+    border: 4px solid var(--border);
+    position: relative;
+    transition: border-color 0.25s ease, transform 0.25s ease;
+  }
+  .step:hover {
+    border-color: var(--green);
+    transform: translateY(-4px);
+  }
+  .step-number {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 28px;
+    color: var(--green);
+    margin-bottom: 16px;
+    text-shadow: 3px 3px 0 var(--green-darker);
+  }
+  .step-icon {
+    margin: 0 auto 20px;
+    display: flex;
+    justify-content: center;
+  }
+  .step-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--text);
+    letter-spacing: 1px;
+    line-height: 1.5;
+  }
+  .step-arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: arrowPulse 1.5s infinite ease-in-out;
+  }
+  @keyframes arrowPulse {
+    0%, 100% { transform: translateX(0); opacity: 0.6; }
+    50% { transform: translateX(6px); opacity: 1; }
+  }
+
+  /* ===== Footer ===== */
+  footer {
+    background: #0a0a15;
+    border-top: 4px solid var(--border);
+    padding: 50px 24px 40px;
+    text-align: center;
+    position: relative;
+    z-index: 2;
+  }
+  .footer-icons {
+    display: flex;
+    gap: 28px;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+  .footer-icons a {
+    color: var(--text-dim);
+    transition: color 0.2s, transform 0.2s;
+    display: inline-flex;
+  }
+  .footer-icons a:hover {
+    color: var(--green-bright);
+    transform: translateY(-3px);
+  }
+  .footer-text {
+    font-family: 'VT323', monospace;
+    font-size: 18px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+  .footer-text .separator { color: var(--green); margin: 0 10px; }
+
+  /* ===== Reveal animation ===== */
+  .reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.7s cubic-bezier(.2,.8,.2,1), transform 0.7s cubic-bezier(.2,.8,.2,1);
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .reveal-stagger > * {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .reveal-stagger.visible > *:nth-child(1) { transition-delay: 0.05s; opacity: 1; transform: translateY(0); }
+  .reveal-stagger.visible > *:nth-child(2) { transition-delay: 0.15s; opacity: 1; transform: translateY(0); }
+  .reveal-stagger.visible > *:nth-child(3) { transition-delay: 0.25s; opacity: 1; transform: translateY(0); }
+  .reveal-stagger.visible > *:nth-child(4) { transition-delay: 0.35s; opacity: 1; transform: translateY(0); }
+  .reveal-stagger.visible > *:nth-child(5) { transition-delay: 0.45s; opacity: 1; transform: translateY(0); }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 860px) {
+    nav { padding: 12px 18px; }
+    .nav-logo { font-size: 11px; }
+    .nav-links { gap: 18px; }
+    .nav-links a { font-size: 9px; }
+
+    .hero { padding: 100px 20px 60px; }
+    .hero-buttons { flex-direction: column; width: 100%; max-width: 320px; }
+    .btn { justify-content: center; width: 100%; }
+
+    .about-grid {
+      grid-template-columns: 1fr;
+      gap: 40px;
+      text-align: center;
+    }
+    .about-text { font-size: 20px; }
+
+    .steps {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    .step-arrow { transform: rotate(90deg); }
+    .step-arrow { animation: arrowPulseV 1.5s infinite ease-in-out; }
+    @keyframes arrowPulseV {
+      0%, 100% { transform: rotate(90deg) translateX(0); opacity: 0.6; }
+      50% { transform: rotate(90deg) translateX(6px); opacity: 1; }
+    }
+    section { padding: 70px 20px; }
+  }
+  @media (max-width: 480px) {
+    .nav-links a:not(.nav-github-text) { display: flex; }
+    .nav-github-text { display: none; }
+    .hero h1 { letter-spacing: 2px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Animated star field -->
+<div class="stars" id="stars"></div>
+
+<!-- ===== Navbar ===== -->
+<nav>
+  <a href="#" class="nav-logo">
+    <!-- Pixel pickaxe / star logo -->
+    <svg class="pixel" width="32" height="32" viewBox="0 0 16 16" aria-hidden="true">
+      <!-- Minecraft-style pickaxe head (brown handle + grey head) -->
+      <rect x="2" y="2" width="2" height="2" fill="#9aa0a6"/>
+      <rect x="4" y="2" width="2" height="2" fill="#c5c9d0"/>
+      <rect x="6" y="2" width="2" height="2" fill="#9aa0a6"/>
+      <rect x="2" y="4" width="2" height="2" fill="#c5c9d0"/>
+      <rect x="4" y="4" width="2" height="2" fill="#e0e3e8"/>
+      <rect x="6" y="4" width="2" height="2" fill="#c5c9d0"/>
+      <rect x="8" y="4" width="2" height="2" fill="#9aa0a6"/>
+      <rect x="6" y="6" width="2" height="2" fill="#8b5a2b"/>
+      <rect x="8" y="6" width="2" height="2" fill="#6d4520"/>
+      <rect x="8" y="8" width="2" height="2" fill="#8b5a2b"/>
+      <rect x="10" y="8" width="2" height="2" fill="#6d4520"/>
+      <rect x="10" y="10" width="2" height="2" fill="#8b5a2b"/>
+      <rect x="12" y="10" width="2" height="2" fill="#6d4520"/>
+      <rect x="12" y="12" width="2" height="2" fill="#8b5a2b"/>
+    </svg>
+    PALTO<span>CRAFT</span>
+  </a>
+  <div class="nav-links">
+    <a href="#download">
+      <!-- Download SVG -->
+      <svg class="pixel" width="14" height="14" viewBox="0 0 10 10" aria-hidden="true">
+        <rect x="4" y="0" width="2" height="6" fill="currentColor"/>
+        <rect x="2" y="4" width="6" height="2" fill="currentColor"/>
+        <rect x="3" y="5" width="4" height="2" fill="currentColor"/>
+        <rect x="4" y="6" width="2" height="2" fill="currentColor"/>
+        <rect x="1" y="8" width="8" height="2" fill="currentColor"/>
+      </svg>
+      СКАЧАТЬ
+    </a>
+    <a href="https://github.com/PaltoCraft/PaltoCraft" target="_blank" rel="noopener">
+      <!-- GitHub pixel -->
+      <svg class="pixel" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="3" y="1" width="10" height="1" fill="currentColor"/>
+        <rect x="2" y="2" width="12" height="1" fill="currentColor"/>
+        <rect x="1" y="3" width="14" height="8" fill="currentColor"/>
+        <rect x="2" y="11" width="12" height="1" fill="currentColor"/>
+        <rect x="3" y="12" width="2" height="3" fill="currentColor"/>
+        <rect x="7" y="12" width="2" height="3" fill="currentColor"/>
+        <rect x="11" y="12" width="2" height="3" fill="currentColor"/>
+        <rect x="4" y="5" width="2" height="2" fill="#0f0f1e"/>
+        <rect x="10" y="5" width="2" height="2" fill="#0f0f1e"/>
+      </svg>
+      <span class="nav-github-text">GITHUB</span>
+    </a>
+  </div>
+</nav>
+
+<!-- ===== Hero ===== -->
+<header class="hero">
+  <div class="hero-ground"></div>
+  <h1>PALTOCRAFT</h1>
+  <div class="hero-subtitle">// Неофициальный лаунчер Minecraft</div>
+  <p class="hero-desc">
+    Играй в Minecraft с официальной авторизацией Microsoft. Выбирай любую версию, устанавливай моды и наслаждайся игрой без лишних проблем.
+  </p>
+  <div class="hero-buttons">
+    <a class="btn btn-primary" href="https://github.com/PaltoCraft/PaltoCraft/releases/latest" target="_blank" rel="noopener" id="download">
+      <!-- Download arrow -->
+      <svg class="pixel" width="18" height="18" viewBox="0 0 10 10" aria-hidden="true">
+        <rect x="4" y="0" width="2" height="6" fill="currentColor"/>
+        <rect x="2" y="4" width="6" height="2" fill="currentColor"/>
+        <rect x="3" y="5" width="4" height="2" fill="currentColor"/>
+        <rect x="4" y="6" width="2" height="2" fill="currentColor"/>
+        <rect x="1" y="8" width="8" height="2" fill="currentColor"/>
+      </svg>
+      СКАЧАТЬ
+    </a>
+    <a class="btn btn-secondary" href="https://github.com/PaltoCraft/PaltoCraft" target="_blank" rel="noopener">
+      <!-- GitHub -->
+      <svg class="pixel" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="3" y="1" width="10" height="1" fill="currentColor"/>
+        <rect x="2" y="2" width="12" height="1" fill="currentColor"/>
+        <rect x="1" y="3" width="14" height="8" fill="currentColor"/>
+        <rect x="2" y="11" width="12" height="1" fill="currentColor"/>
+        <rect x="3" y="12" width="2" height="3" fill="currentColor"/>
+        <rect x="7" y="12" width="2" height="3" fill="currentColor"/>
+        <rect x="11" y="12" width="2" height="3" fill="currentColor"/>
+        <rect x="4" y="5" width="2" height="2" fill="#1e1e35"/>
+        <rect x="10" y="5" width="2" height="2" fill="#1e1e35"/>
+      </svg>
+      GITHUB
+    </a>
+  </div>
+
+  <div class="scroll-down" aria-hidden="true">
+    <svg class="pixel" width="28" height="28" viewBox="0 0 10 10">
+      <rect x="4" y="0" width="2" height="6" fill="#4CAF50"/>
+      <rect x="2" y="4" width="6" height="2" fill="#4CAF50"/>
+      <rect x="3" y="5" width="4" height="2" fill="#4CAF50"/>
+      <rect x="4" y="6" width="2" height="2" fill="#4CAF50"/>
+    </svg>
+  </div>
+</header>
+
+<!-- ===== About ===== -->
+<section class="about" id="about">
+  <div class="container">
+    <h2 class="section-title reveal">ЧТО ТАКОЕ PALTOCRAFT?</h2>
+    <div class="section-underline reveal"></div>
+    <div class="about-grid">
+      <div class="about-image reveal">
+        <!-- Big Minecraft grass block, isometric pixel -->
+        <svg class="pixel" width="240" height="240" viewBox="0 0 32 32" aria-hidden="true">
+          <!-- Top (grass) -->
+          <g>
+            <rect x="8" y="4" width="16" height="1" fill="#6aa84f"/>
+            <rect x="7" y="5" width="18" height="1" fill="#6aa84f"/>
+            <rect x="6" y="6" width="20" height="1" fill="#6aa84f"/>
+            <rect x="5" y="7" width="22" height="1" fill="#7bc15a"/>
+            <rect x="6" y="8" width="20" height="1" fill="#6aa84f"/>
+            <rect x="7" y="9" width="18" height="1" fill="#5a8f3e"/>
+            <rect x="8" y="10" width="16" height="1" fill="#4a7d30"/>
+            <!-- top highlights -->
+            <rect x="10" y="6" width="2" height="1" fill="#8ed16d"/>
+            <rect x="16" y="7" width="3" height="1" fill="#8ed16d"/>
+            <rect x="20" y="8" width="2" height="1" fill="#8ed16d"/>
+          </g>
+          <!-- Left (dirt with grass edge) -->
+          <g>
+            <rect x="4" y="11" width="12" height="1" fill="#5a8f3e"/>
+            <rect x="4" y="12" width="12" height="1" fill="#6d4520"/>
+            <rect x="4" y="13" width="12" height="1" fill="#8b5a2b"/>
+            <rect x="4" y="14" width="12" height="1" fill="#6d4520"/>
+            <rect x="4" y="15" width="12" height="1" fill="#8b5a2b"/>
+            <rect x="4" y="16" width="12" height="1" fill="#6d4520"/>
+            <rect x="4" y="17" width="12" height="1" fill="#8b5a2b"/>
+            <rect x="4" y="18" width="12" height="1" fill="#6d4520"/>
+            <rect x="4" y="19" width="12" height="1" fill="#8b5a2b"/>
+            <rect x="4" y="20" width="12" height="1" fill="#6d4520"/>
+            <rect x="4" y="21" width="12" height="1" fill="#5a3818"/>
+            <!-- dirt details -->
+            <rect x="6" y="13" width="2" height="1" fill="#4a2e15"/>
+            <rect x="10" y="15" width="1" height="1" fill="#4a2e15"/>
+            <rect x="12" y="18" width="2" height="1" fill="#4a2e15"/>
+            <rect x="6" y="19" width="1" height="1" fill="#4a2e15"/>
+            <rect x="8" y="20" width="2" height="1" fill="#4a2e15"/>
+          </g>
+          <!-- Right (dirt darker) -->
+          <g>
+            <rect x="16" y="11" width="12" height="1" fill="#4a7d30"/>
+            <rect x="16" y="12" width="12" height="1" fill="#5a3818"/>
+            <rect x="16" y="13" width="12" height="1" fill="#6d4520"/>
+            <rect x="16" y="14" width="12" height="1" fill="#5a3818"/>
+            <rect x="16" y="15" width="12" height="1" fill="#6d4520"/>
+            <rect x="16" y="16" width="12" height="1" fill="#5a3818"/>
+            <rect x="16" y="17" width="12" height="1" fill="#6d4520"/>
+            <rect x="16" y="18" width="12" height="1" fill="#5a3818"/>
+            <rect x="16" y="19" width="12" height="1" fill="#6d4520"/>
+            <rect x="16" y="20" width="12" height="1" fill="#5a3818"/>
+            <rect x="16" y="21" width="12" height="1" fill="#3d2612"/>
+            <!-- dirt details -->
+            <rect x="18" y="14" width="2" height="1" fill="#3d2612"/>
+            <rect x="22" y="16" width="2" height="1" fill="#3d2612"/>
+            <rect x="20" y="19" width="1" height="1" fill="#3d2612"/>
+            <rect x="24" y="20" width="2" height="1" fill="#3d2612"/>
+          </g>
+          <!-- Bottom tip -->
+          <rect x="6" y="22" width="20" height="1" fill="#3d2612"/>
+          <rect x="7" y="23" width="18" height="1" fill="#3d2612"/>
+          <rect x="8" y="24" width="16" height="1" fill="#2a1a0c"/>
+          <rect x="9" y="25" width="14" height="1" fill="#2a1a0c"/>
+          <rect x="10" y="26" width="12" height="1" fill="#1a0f08"/>
+          <rect x="12" y="27" width="8" height="1" fill="#1a0f08"/>
+        </svg>
+      </div>
+      <div class="about-text reveal">
+        <p><strong>PaltoCraft</strong> — это бесплатный неофициальный лаунчер для Minecraft, созданный для удобной игры. Он поддерживает <strong>официальную авторизацию через Microsoft</strong>, позволяет устанавливать любые версии игры, управлять модами и запускать игру в пару кликов.</p>
+        <p style="margin-top: 18px;">Не требует пиратских аккаунтов — <strong>всё честно и безопасно</strong>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Features ===== -->
+<section id="features">
+  <div class="container">
+    <h2 class="section-title reveal">ВОЗМОЖНОСТИ</h2>
+    <div class="section-underline reveal"></div>
+    <div class="features-grid reveal-stagger">
+      <!-- Feature: Key / Microsoft auth -->
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg class="pixel" width="72" height="72" viewBox="0 0 16 16" aria-hidden="true">
+            <!-- key bow -->
+            <rect x="2" y="4" width="4" height="1" fill="#d4a024"/>
+            <rect x="1" y="5" width="6" height="1" fill="#f0c040"/>
+            <rect x="1" y="6" width="1" height="2" fill="#f0c040"/>
+            <rect x="2" y="6" width="4" height="2" fill="#ffdc60"/>
+            <rect x="6" y="6" width="1" height="2" fill="#d4a024"/>
+            <rect x="1" y="8" width="6" height="1" fill="#f0c040"/>
+            <rect x="2" y="9" width="4" height="1" fill="#d4a024"/>
+            <!-- key hole -->
+            <rect x="3" y="6" width="2" height="1" fill="#8b5a0a"/>
+            <rect x="3" y="7" width="1" height="1" fill="#8b5a0a"/>
+            <!-- shaft -->
+            <rect x="7" y="6" width="6" height="2" fill="#f0c040"/>
+            <rect x="7" y="7" width="6" height="1" fill="#d4a024"/>
+            <!-- teeth -->
+            <rect x="11" y="8" width="1" height="2" fill="#f0c040"/>
+            <rect x="13" y="8" width="1" height="2" fill="#f0c040"/>
+            <rect x="13" y="6" width="1" height="2" fill="#f0c040"/>
+            <rect x="14" y="6" width="1" height="4" fill="#d4a024"/>
+          </svg>
+        </div>
+        <div class="feature-title">АВТОРИЗАЦИЯ MICROSOFT</div>
+        <div class="feature-desc">Войди через свой лицензионный аккаунт Microsoft</div>
+      </div>
+
+      <!-- Feature: Chest -->
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg class="pixel" width="72" height="72" viewBox="0 0 16 16" aria-hidden="true">
+            <!-- chest body -->
+            <rect x="1" y="4" width="14" height="1" fill="#6d4520"/>
+            <rect x="1" y="5" width="14" height="3" fill="#a06a30"/>
+            <rect x="1" y="8" width="14" height="1" fill="#8b5a2b"/>
+            <rect x="1" y="9" width="14" height="5" fill="#a06a30"/>
+            <rect x="1" y="14" width="14" height="1" fill="#5a3818"/>
+            <!-- wood planks dark lines -->
+            <rect x="4" y="5" width="1" height="3" fill="#7d5020"/>
+            <rect x="10" y="5" width="1" height="3" fill="#7d5020"/>
+            <rect x="4" y="9" width="1" height="5" fill="#7d5020"/>
+            <rect x="10" y="9" width="1" height="5" fill="#7d5020"/>
+            <rect x="1" y="11" width="14" height="1" fill="#7d5020"/>
+            <!-- sides dark -->
+            <rect x="1" y="5" width="1" height="9" fill="#6d4520"/>
+            <rect x="14" y="5" width="1" height="9" fill="#6d4520"/>
+            <!-- lock -->
+            <rect x="7" y="7" width="2" height="4" fill="#3a3a3a"/>
+            <rect x="7" y="7" width="2" height="1" fill="#5a5a5a"/>
+            <rect x="8" y="8" width="1" height="2" fill="#1a1a1a"/>
+          </svg>
+        </div>
+        <div class="feature-title">ЛЮБЫЕ ВЕРСИИ</div>
+        <div class="feature-desc">Выбирай и устанавливай любую версию Minecraft</div>
+      </div>
+
+      <!-- Feature: Gear -->
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg class="pixel" width="72" height="72" viewBox="0 0 16 16" aria-hidden="true">
+            <!-- teeth -->
+            <rect x="6" y="1" width="4" height="2" fill="#9aa0a6"/>
+            <rect x="6" y="13" width="4" height="2" fill="#9aa0a6"/>
+            <rect x="1" y="6" width="2" height="4" fill="#9aa0a6"/>
+            <rect x="13" y="6" width="2" height="4" fill="#9aa0a6"/>
+            <rect x="2" y="2" width="2" height="2" fill="#9aa0a6"/>
+            <rect x="12" y="2" width="2" height="2" fill="#9aa0a6"/>
+            <rect x="2" y="12" width="2" height="2" fill="#9aa0a6"/>
+            <rect x="12" y="12" width="2" height="2" fill="#9aa0a6"/>
+            <!-- body -->
+            <rect x="4" y="3" width="8" height="1" fill="#c5c9d0"/>
+            <rect x="3" y="4" width="10" height="8" fill="#c5c9d0"/>
+            <rect x="4" y="12" width="8" height="1" fill="#c5c9d0"/>
+            <!-- highlights -->
+            <rect x="4" y="4" width="1" height="7" fill="#e0e3e8"/>
+            <rect x="6" y="3" width="3" height="1" fill="#e0e3e8"/>
+            <!-- shadow -->
+            <rect x="11" y="4" width="1" height="8" fill="#7a7f85"/>
+            <rect x="4" y="11" width="8" height="1" fill="#7a7f85"/>
+            <!-- hole center -->
+            <rect x="6" y="6" width="4" height="4" fill="#1e1e35"/>
+            <rect x="7" y="7" width="2" height="2" fill="#4CAF50"/>
+          </svg>
+        </div>
+        <div class="feature-title">МОДЫ И СБОРКИ</div>
+        <div class="feature-desc">Поддержка Forge, Fabric и популярных модпаков</div>
+      </div>
+
+      <!-- Feature: Lightning -->
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg class="pixel" width="72" height="72" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="8" y="1" width="4" height="1" fill="#ffdc60"/>
+            <rect x="7" y="2" width="4" height="1" fill="#ffdc60"/>
+            <rect x="6" y="3" width="4" height="1" fill="#ffdc60"/>
+            <rect x="5" y="4" width="4" height="1" fill="#ffdc60"/>
+            <rect x="4" y="5" width="5" height="1" fill="#ffdc60"/>
+            <rect x="3" y="6" width="8" height="1" fill="#ffdc60"/>
+            <rect x="4" y="7" width="7" height="1" fill="#ffdc60"/>
+            <rect x="5" y="8" width="5" height="1" fill="#f0c040"/>
+            <rect x="6" y="9" width="4" height="1" fill="#f0c040"/>
+            <rect x="5" y="10" width="4" height="1" fill="#f0c040"/>
+            <rect x="4" y="11" width="4" height="1" fill="#f0c040"/>
+            <rect x="3" y="12" width="4" height="1" fill="#d4a024"/>
+            <rect x="2" y="13" width="4" height="1" fill="#d4a024"/>
+            <!-- highlight -->
+            <rect x="8" y="2" width="1" height="4" fill="#ffffff"/>
+          </svg>
+        </div>
+        <div class="feature-title">БЫСТРЫЙ ЗАПУСК</div>
+        <div class="feature-desc">Минимум настроек, максимум игры</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== How to start ===== -->
+<section class="howto" id="howto">
+  <div class="container">
+    <h2 class="section-title reveal">КАК НАЧАТЬ?</h2>
+    <div class="section-underline reveal"></div>
+    <div class="steps reveal">
+      <!-- Step 1 -->
+      <div class="step">
+        <div class="step-number">01</div>
+        <div class="step-icon">
+          <!-- Download -->
+          <svg class="pixel" width="56" height="56" viewBox="0 0 10 10" aria-hidden="true">
+            <rect x="4" y="0" width="2" height="6" fill="#4CAF50"/>
+            <rect x="2" y="4" width="6" height="2" fill="#4CAF50"/>
+            <rect x="3" y="5" width="4" height="2" fill="#5fdb63"/>
+            <rect x="4" y="6" width="2" height="2" fill="#5fdb63"/>
+            <rect x="1" y="8" width="8" height="2" fill="#4CAF50"/>
+            <rect x="1" y="9" width="8" height="1" fill="#2e7d32"/>
+          </svg>
+        </div>
+        <div class="step-title">СКАЧАЙ<br>ЛАУНЧЕР</div>
+      </div>
+
+      <div class="step-arrow" aria-hidden="true">
+        <svg class="pixel" width="40" height="20" viewBox="0 0 20 10">
+          <rect x="0" y="4" width="14" height="2" fill="#4CAF50"/>
+          <rect x="12" y="2" width="2" height="6" fill="#4CAF50"/>
+          <rect x="14" y="3" width="2" height="4" fill="#4CAF50"/>
+          <rect x="16" y="4" width="2" height="2" fill="#4CAF50"/>
+        </svg>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step">
+        <div class="step-number">02</div>
+        <div class="step-icon">
+          <!-- Key -->
+          <svg class="pixel" width="56" height="56" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="2" y="4" width="4" height="1" fill="#d4a024"/>
+            <rect x="1" y="5" width="6" height="1" fill="#f0c040"/>
+            <rect x="1" y="6" width="1" height="2" fill="#f0c040"/>
+            <rect x="2" y="6" width="4" height="2" fill="#ffdc60"/>
+            <rect x="6" y="6" width="1" height="2" fill="#d4a024"/>
+            <rect x="1" y="8" width="6" height="1" fill="#f0c040"/>
+            <rect x="2" y="9" width="4" height="1" fill="#d4a024"/>
+            <rect x="3" y="6" width="2" height="1" fill="#8b5a0a"/>
+            <rect x="3" y="7" width="1" height="1" fill="#8b5a0a"/>
+            <rect x="7" y="6" width="6" height="2" fill="#f0c040"/>
+            <rect x="7" y="7" width="6" height="1" fill="#d4a024"/>
+            <rect x="11" y="8" width="1" height="2" fill="#f0c040"/>
+            <rect x="13" y="8" width="1" height="2" fill="#f0c040"/>
+            <rect x="13" y="6" width="1" height="2" fill="#f0c040"/>
+            <rect x="14" y="6" width="1" height="4" fill="#d4a024"/>
+          </svg>
+        </div>
+        <div class="step-title">ВОЙДИ ЧЕРЕЗ<br>MICROSOFT</div>
+      </div>
+
+      <div class="step-arrow" aria-hidden="true">
+        <svg class="pixel" width="40" height="20" viewBox="0 0 20 10">
+          <rect x="0" y="4" width="14" height="2" fill="#4CAF50"/>
+          <rect x="12" y="2" width="2" height="6" fill="#4CAF50"/>
+          <rect x="14" y="3" width="2" height="4" fill="#4CAF50"/>
+          <rect x="16" y="4" width="2" height="2" fill="#4CAF50"/>
+        </svg>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step">
+        <div class="step-number">03</div>
+        <div class="step-icon">
+          <!-- Lightning / rocket launch -->
+          <svg class="pixel" width="56" height="56" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="8" y="1" width="4" height="1" fill="#ffdc60"/>
+            <rect x="7" y="2" width="4" height="1" fill="#ffdc60"/>
+            <rect x="6" y="3" width="4" height="1" fill="#ffdc60"/>
+            <rect x="5" y="4" width="4" height="1" fill="#ffdc60"/>
+            <rect x="4" y="5" width="5" height="1" fill="#ffdc60"/>
+            <rect x="3" y="6" width="8" height="1" fill="#ffdc60"/>
+            <rect x="4" y="7" width="7" height="1" fill="#ffdc60"/>
+            <rect x="5" y="8" width="5" height="1" fill="#f0c040"/>
+            <rect x="6" y="9" width="4" height="1" fill="#f0c040"/>
+            <rect x="5" y="10" width="4" height="1" fill="#f0c040"/>
+            <rect x="4" y="11" width="4" height="1" fill="#f0c040"/>
+            <rect x="3" y="12" width="4" height="1" fill="#d4a024"/>
+            <rect x="2" y="13" width="4" height="1" fill="#d4a024"/>
+            <rect x="8" y="2" width="1" height="4" fill="#ffffff"/>
+          </svg>
+        </div>
+        <div class="step-title">ЗАПУСТИ<br>MINECRAFT</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Footer ===== -->
+<footer>
+  <div class="footer-icons">
+    <a href="https://github.com/PaltoCraft/PaltoCraft" target="_blank" rel="noopener" aria-label="GitHub">
+      <svg class="pixel" width="28" height="28" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="3" y="1" width="10" height="1" fill="currentColor"/>
+        <rect x="2" y="2" width="12" height="1" fill="currentColor"/>
+        <rect x="1" y="3" width="14" height="8" fill="currentColor"/>
+        <rect x="2" y="11" width="12" height="1" fill="currentColor"/>
+        <rect x="3" y="12" width="2" height="3" fill="currentColor"/>
+        <rect x="7" y="12" width="2" height="3" fill="currentColor"/>
+        <rect x="11" y="12" width="2" height="3" fill="currentColor"/>
+        <rect x="4" y="5" width="2" height="2" fill="#0a0a15"/>
+        <rect x="10" y="5" width="2" height="2" fill="#0a0a15"/>
+      </svg>
+    </a>
+    <a href="https://github.com/PaltoCraft/PaltoCraft/releases/latest" target="_blank" rel="noopener" aria-label="Скачать">
+      <svg class="pixel" width="28" height="28" viewBox="0 0 10 10" aria-hidden="true">
+        <rect x="4" y="0" width="2" height="6" fill="currentColor"/>
+        <rect x="2" y="4" width="6" height="2" fill="currentColor"/>
+        <rect x="3" y="5" width="4" height="2" fill="currentColor"/>
+        <rect x="4" y="6" width="2" height="2" fill="currentColor"/>
+        <rect x="1" y="8" width="8" height="2" fill="currentColor"/>
+      </svg>
+    </a>
+  </div>
+  <div class="footer-text">
+    © PaltoCraft 2026 <span class="separator">|</span> Не связано с Mojang AB и Microsoft
+  </div>
+</footer>
+
+<script>
+  // ===== Generate animated starfield =====
+  (function () {
+    const container = document.getElementById('stars');
+    const count = window.innerWidth < 768 ? 60 : 120;
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < count; i++) {
+      const star = document.createElement('div');
+      const size = Math.random();
+      star.className = 'star' + (size < 0.3 ? ' sm' : size > 0.85 ? ' lg' : '');
+      star.style.top = Math.random() * 100 + '%';
+      star.style.left = Math.random() * 100 + '%';
+      star.style.animationDelay = (Math.random() * 3) + 's';
+      star.style.animationDuration = (2 + Math.random() * 3) + 's';
+      frag.appendChild(star);
+    }
+    container.appendChild(frag);
+  })();
+
+  // ===== IntersectionObserver reveal =====
+  (function () {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.reveal, .reveal-stagger').forEach(el => observer.observe(el));
+  })();
+</script>
+
+</body>
+</html>
