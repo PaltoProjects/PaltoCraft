@@ -1,5 +1,18 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Only these channels are forwarded to the renderer. Anything else from main is silently dropped.
+const ALLOWED_RECV = new Set([
+  'auth-update',
+  'launch-log',
+  'launch-progress',
+  'launch-close',
+  'java-status',
+  'java-progress',
+  'update-progress',
+  'mod-status',
+  'mod-progress'
+]);
+
 contextBridge.exposeInMainWorld('launcher', {
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
@@ -22,7 +35,7 @@ contextBridge.exposeInMainWorld('launcher', {
   downloadJava: (javaVer, gameDir) => ipcRenderer.invoke('download-java', javaVer, gameDir),
 
   checkUpdate: () => ipcRenderer.invoke('check-update'),
-  downloadUpdate: (url) => ipcRenderer.invoke('download-update', url),
+  downloadUpdate: (url, sha256) => ipcRenderer.invoke('download-update', url, sha256),
   installUpdate: (installerPath) => ipcRenderer.invoke('install-update', installerPath),
 
   cacheSet: (key, value) => ipcRenderer.invoke('cache-set', key, value),
@@ -36,15 +49,19 @@ contextBridge.exposeInMainWorld('launcher', {
   installFabric: (mcVersion, gameDir) => ipcRenderer.invoke('install-fabric', mcVersion, gameDir),
   installForge: (mcVersion, gameDir) => ipcRenderer.invoke('install-forge', mcVersion, gameDir),
   installNeoforge: (mcVersion, gameDir) => ipcRenderer.invoke('install-neoforge', mcVersion, gameDir),
-  downloadMod: (modId, mcVersion, loader, gameDir) => ipcRenderer.invoke('download-mod-modrinth', modId, mcVersion, loader, gameDir),
+  downloadMod: (modId, mcVersion, loader, gameDir, useSubfolder) =>
+    ipcRenderer.invoke('download-mod-modrinth', modId, mcVersion, loader, gameDir, useSubfolder),
   openPath: (p) => ipcRenderer.invoke('open-path', p),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
   killGame: () => ipcRenderer.invoke('kill-game'),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 
   on: (channel, callback) => {
-    const allowed = ['auth-update', 'launch-log', 'launch-progress', 'launch-close', 'java-status', 'java-progress', 'update-progress', 'mod-status', 'mod-progress'];
-    if (allowed.includes(channel)) {
-      ipcRenderer.on(channel, (_, ...args) => callback(...args));
-    }
+    if (!ALLOWED_RECV.has(channel)) return;
+    ipcRenderer.on(channel, (_, ...args) => callback(...args));
   },
-  off: (channel) => ipcRenderer.removeAllListeners(channel)
+  off: (channel) => {
+    if (!ALLOWED_RECV.has(channel)) return;
+    ipcRenderer.removeAllListeners(channel);
+  }
 });
