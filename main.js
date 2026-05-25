@@ -1,16 +1,37 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
-const { execFile, exec, spawn } = require('child_process');
+const { spawn } = require('child_process');
 const Store = require('./store');
 
 const store = new Store();
 
-const CURRENT_VERSION = '1.0.3';
+// Single source of truth: read version from package.json
+let CURRENT_VERSION = '0.0.0';
+try {
+  CURRENT_VERSION = require('./package.json').version || '0.0.0';
+} catch {}
+const USER_AGENT = `PaltoCraft/${CURRENT_VERSION}`;
 const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/PaltoCraft/PaltoCraft/main/version.json';
+
+// Encrypted-at-rest keys (use OS keychain via safeStorage). Auth tokens go here.
+const ENCRYPTED_KEYS = new Set(['auth-token', 'auth-refresh', 'auth-profile']);
+
+// Allowed cache keys — strict allowlist, prevents path traversal in cache-set/get.
+const SAFE_KEY_RE = /^[A-Za-z0-9._-]+$/;
+function isValidCacheKey(key) {
+  return typeof key === 'string' && key.length > 0 && key.length <= 128 && SAFE_KEY_RE.test(key);
+}
+
+// Safe webContents.send — no-op if window is missing or destroyed.
+function safeSend(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
+}
 
 function checkIntegrity() {
   const manifestPath = path.join(__dirname, 'integrity.json');
@@ -19,8 +40,10 @@ function checkIntegrity() {
   let manifest;
   try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { return; }
 
-  const files = ['renderer.js', 'preload.js', 'index.html', 'styles.css'];
+  // Cover all JS that runs in-process plus renderer assets.
+  const files = Object.keys(manifest);
   for (const file of files) {
+    if (!SAFE_KEY_RE.test(file)) continue; // ignore weird entries
     const filePath = path.join(__dirname, file);
     if (!fs.existsSync(filePath)) continue;
     const hash = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
@@ -38,14 +61,27 @@ function checkIntegrity() {
   }
 }
 
+// SemVer-ish: parses MAJOR.MINOR.PATCH(-prerelease). Pre-release versions are LOWER than release of the same triple.
 function compareVersions(a, b) {
-  const pa = String(a).split('.').map(Number);
-  const pb = String(b).split('.').map(Number);
+  const parse = (v) => {
+    const m = String(v).trim().match(/^(\d+)\.(\d+)(?:\.(\d+))?(?:[-+](.+))?$/);
+    if (!m) return null;
+    return {
+      nums: [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3] || '0', 10)],
+      pre: m[4] || ''
+    };
+  };
+  const pa = parse(a), pb = parse(b);
+  if (!pa || !pb) return 0;
   for (let i = 0; i < 3; i++) {
-    if ((pa[i] || 0) > (pb[i] || 0)) return 1;
-    if ((pa[i] || 0) < (pb[i] || 0)) return -1;
+    if (pa.nums[i] > pb.nums[i]) return 1;
+    if (pa.nums[i] < pb.nums[i]) return -1;
   }
-  return 0;
+  // No pre-release outranks any pre-release of the same numeric version.
+  if (!pa.pre && pb.pre) return 1;
+  if (pa.pre && !pb.pre) return -1;
+  if (pa.pre === pb.pre) return 0;
+  return pa.pre < pb.pre ? -1 : 1;
 }
 
 function getDefaultGameDir() {
@@ -58,6 +94,9 @@ function getDefaultGameDir() {
   }
 }
 
+// Authoritative source: version JSON from Mojang manifest (`javaVersion.majorVersion`).
+// Fallback heuristic covers ranges Mojang actually shipped:
+//   1.16 → 8, 1.17 → 16, 1.18–1.20.4 → 17, 1.20.5+/1.21+ → 21.
 async function getRequiredJavaVersion(mcVersion, allVersionsManifest) {
   try {
     const verEntry = (allVersionsManifest || []).find(v => v.id === mcVersion);
@@ -70,27 +109,45 @@ async function getRequiredJavaVersion(mcVersion, allVersionsManifest) {
   } catch {}
 
   if (!mcVersion) return 17;
-  if (/^[ab]/.test(mcVersion)) return 8;
-  if (/^\d{2}w/.test(mcVersion)) return 21;
-  const parts = mcVersion.split('.').map(n => parseInt(n) || 0);
+  if (/^[ab]/.test(mcVersion)) return 8; // alpha/beta
+  // Snapshot id like 24w14a — use latest LTS the era is on.
+  if (/^\d{2}w/.test(mcVersion)) {
+    const year = parseInt(mcVersion.slice(0, 2), 10);
+    if (year >= 24) return 21;
+    if (year >= 21) return 17;
+    return 8;
+  }
+  const parts = mcVersion.split('.').map(n => parseInt(n, 10) || 0);
   const minor = parts[1] ?? 0;
+  const patch = parts[2] ?? 0;
   if (minor >= 21) return 21;
-  if (minor >= 17) return 17;
+  if (minor === 20 && patch >= 5) return 21;
+  if (minor >= 18) return 17;
+  if (minor === 17) return 16;
   return 8;
 }
 
-function fetchJson(url) {
+function fetchJson(url, depth = 0) {
   return new Promise((resolve, reject) => {
+    if (depth > 5) return reject(new Error('too many redirects'));
     const lib = url.startsWith('https') ? https : http;
-    lib.get(url, { headers: { 'User-Agent': 'PaltoCraft/1.0' }, timeout: 10000 }, (res) => {
-      if ([301, 302, 307, 308].includes(res.statusCode)) {
-        return fetchJson(res.headers.location).then(resolve).catch(reject);
+    const req = lib.get(url, { headers: { 'User-Agent': USER_AGENT }, timeout: 15000 }, (res) => {
+      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume();
+        return fetchJson(res.headers.location, depth + 1).then(resolve, reject);
+      }
+      if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+        res.resume();
+        return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
       }
       let data = '';
+      res.setEncoding('utf8');
       res.on('data', c => data += c);
       res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
       res.on('error', reject);
-    }).on('error', reject).on('timeout', () => reject(new Error('timeout')));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(new Error('timeout')); });
   });
 }
 
@@ -100,78 +157,169 @@ function getJavaDir(gameDir, javaVer) {
 
 function findJavaExe(javaDir) {
   if (!fs.existsSync(javaDir)) return null;
-  const entries = fs.readdirSync(javaDir);
-  for (const entry of entries) {
-    const exe = path.join(javaDir, entry, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
-    if (fs.existsSync(exe)) return exe;
-  }
-  const flat = path.join(javaDir, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
+  const exeName = process.platform === 'win32' ? 'java.exe' : 'java';
+  // Look 1 level deep (Adoptium archives unpack as jdk-XX.Y.Z+N/bin/java) then flat fallback.
+  try {
+    for (const entry of fs.readdirSync(javaDir)) {
+      // macOS bundles: jdk-XX.jdk/Contents/Home/bin/java
+      const macHome = path.join(javaDir, entry, 'Contents', 'Home', 'bin', exeName);
+      if (fs.existsSync(macHome)) return macHome;
+      const exe = path.join(javaDir, entry, 'bin', exeName);
+      if (fs.existsSync(exe)) return exe;
+    }
+  } catch {}
+  const flat = path.join(javaDir, 'bin', exeName);
   if (fs.existsSync(flat)) return flat;
   return null;
 }
 
-function downloadFile(url, destPath, onProgress) {
+// Compute sha256 of a file, returns hex string.
+function sha256OfFile(filePath) {
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(destPath);
-    const lib = url.startsWith('https') ? https : http;
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', c => hash.update(c));
+    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', reject);
+  });
+}
 
-    const request = (u) => lib.get(u, { headers: { 'User-Agent': 'PaltoCraft/1.0' } }, (res) => {
-      if ([301, 302, 307, 308].includes(res.statusCode)) {
-        return request(res.headers.location);
-      }
-      if (res.statusCode !== 200) {
-        file.destroy();
-        return reject(new Error(`HTTP ${res.statusCode}`));
-      }
-      const total = parseInt(res.headers['content-length'] || '0', 10);
-      let received = 0;
-      res.on('data', chunk => {
-        received += chunk.length;
-        file.write(chunk);
-        if (total && onProgress) onProgress(received, total);
+// Same for sha1 (Modrinth provides sha1 + sha512).
+function sha1OfFile(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha1');
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', c => hash.update(c));
+    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', reject);
+  });
+}
+
+// Robust downloader: timeout, redirect cap, backpressure via pipe, waits for fs flush, optional sha256/sha1 verify.
+function downloadFile(url, destPath, onProgress, opts = {}) {
+  const { expectedSha256, expectedSha1, timeoutMs = 60_000, maxRedirects = 5 } = opts;
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
+  const tmpPath = destPath + '.part';
+
+  return new Promise((resolve, reject) => {
+    let redirects = 0;
+    let activeReq = null;
+    let file = null;
+
+    const cleanup = () => {
+      try { if (file && !file.destroyed) file.destroy(); } catch {}
+      try { if (activeReq && !activeReq.destroyed) activeReq.destroy(); } catch {}
+      try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch {}
+    };
+
+    const fail = (err) => { cleanup(); reject(err); };
+
+    const start = (currentUrl) => {
+      let lib;
+      try { lib = currentUrl.startsWith('https') ? https : http; }
+      catch (e) { return fail(e); }
+
+      file = fs.createWriteStream(tmpPath);
+      file.on('error', fail);
+
+      activeReq = lib.get(currentUrl, { headers: { 'User-Agent': USER_AGENT }, timeout: timeoutMs }, (res) => {
+        if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+          res.resume();
+          try { file.destroy(); } catch {}
+          if (++redirects > maxRedirects) return fail(new Error('too many redirects'));
+          return start(new URL(res.headers.location, currentUrl).toString());
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          return fail(new Error(`HTTP ${res.statusCode} for ${currentUrl}`));
+        }
+        const total = parseInt(res.headers['content-length'] || '0', 10);
+        let received = 0;
+        res.on('data', chunk => {
+          received += chunk.length;
+          if (total && onProgress) onProgress(received, total);
+        });
+        res.on('error', fail);
+        file.on('finish', async () => {
+          try {
+            if (expectedSha256) {
+              const actual = await sha256OfFile(tmpPath);
+              if (actual.toLowerCase() !== expectedSha256.toLowerCase()) {
+                return fail(new Error(`SHA-256 mismatch (expected ${expectedSha256}, got ${actual})`));
+              }
+            }
+            if (expectedSha1) {
+              const actual = await sha1OfFile(tmpPath);
+              if (actual.toLowerCase() !== expectedSha1.toLowerCase()) {
+                return fail(new Error(`SHA-1 mismatch (expected ${expectedSha1}, got ${actual})`));
+              }
+            }
+            fs.renameSync(tmpPath, destPath);
+            resolve();
+          } catch (e) { fail(e); }
+        });
+        res.pipe(file);
       });
-      res.on('end', () => { file.end(); resolve(); });
-      res.on('error', reject);
-    });
-    request(url);
-    file.on('error', reject);
+      activeReq.on('error', fail);
+      activeReq.on('timeout', () => activeReq.destroy(new Error('download timeout')));
+    };
+
+    start(url);
   });
 }
 
-function extractZip(zipPath, destDir) {
+// Extract archive. Win uses Expand-Archive for .zip, tar for .tar.gz. Linux/macOS use system tar (handles both).
+// All paths passed as argv (no shell interpolation → no injection).
+function extractArchive(archivePath, destDir) {
   return new Promise((resolve, reject) => {
-    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-    if (process.platform === 'win32') {
-      const cmd = `powershell -NoProfile -Command "Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${destDir}' -Force"`;
-      exec(cmd, { timeout: 120000 }, (err) => err ? reject(err) : resolve());
+    fs.mkdirSync(destDir, { recursive: true });
+    const isTarGz = /\.tar\.gz$|\.tgz$/i.test(archivePath);
+
+    let cmd, args;
+    if (process.platform === 'win32' && !isTarGz) {
+      // PowerShell argv (no string interpolation — each arg is a separate process argument).
+      cmd = 'powershell.exe';
+      args = [
+        '-NoProfile', '-NonInteractive', '-Command',
+        `Expand-Archive -LiteralPath ${JSON.stringify(archivePath)} -DestinationPath ${JSON.stringify(destDir)} -Force`
+      ];
     } else {
-      exec(`tar -xzf "${zipPath}" -C "${destDir}"`, { timeout: 120000 }, (err) => err ? reject(err) : resolve());
+      // Modern Windows ships bsdtar (tar.exe) and handles both .zip and .tar.gz. Linux/macOS tar same.
+      cmd = process.platform === 'win32' ? 'tar.exe' : 'tar';
+      args = ['-xf', archivePath, '-C', destDir];
     }
+
+    const child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+    let stderr = '';
+    child.stderr?.on('data', c => { stderr += String(c); });
+    const killTimer = setTimeout(() => { try { child.kill(); } catch {} }, 180_000);
+    child.on('close', (code) => {
+      clearTimeout(killTimer);
+      if (code === 0) resolve();
+      else reject(new Error(`extract failed (code ${code}): ${stderr.slice(0, 400)}`));
+    });
+    child.on('error', (e) => { clearTimeout(killTimer); reject(e); });
   });
 }
+// Back-compat alias.
+const extractZip = extractArchive;
 
 async function getAdoptiumDownloadUrl(javaVersion) {
   const os = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux';
-  const arch = process.arch === 'x64' ? 'x64' : 'x86';
+  let arch;
+  if (process.arch === 'x64') arch = 'x64';
+  else if (process.arch === 'arm64') arch = 'aarch64';
+  else if (process.arch === 'ia32') arch = 'x86';
+  else arch = process.arch;
 
   const apiUrl = `https://api.adoptium.net/v3/assets/latest/${javaVersion}/hotspot?architecture=${arch}&image_type=jre&os=${os}&vendor=eclipse`;
-
-  return new Promise((resolve, reject) => {
-    https.get(apiUrl, { headers: { 'User-Agent': 'PaltoCraft/1.0' } }, (res) => {
-      let data = '';
-      res.on('data', c => data += c);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (!json.length) return reject(new Error('Adoptium: нет релизов для Java ' + javaVersion));
-          const pkg = json[0].binary?.package;
-          if (!pkg?.link) return reject(new Error('Adoptium: не найдена ссылка на скачивание'));
-          resolve({ url: pkg.link, size: pkg.size, checksum: pkg.checksum });
-        } catch (e) { reject(e); }
-      });
-      res.on('error', reject);
-    }).on('error', reject);
-  });
+  const json = await fetchJson(apiUrl);
+  if (!Array.isArray(json) || !json.length) {
+    throw new Error('Adoptium: нет релизов для Java ' + javaVersion + ' (' + os + '/' + arch + ')');
+  }
+  const pkg = json[0].binary && json[0].binary.package;
+  if (!pkg || !pkg.link) throw new Error('Adoptium: не найдена ссылка на скачивание');
+  return { url: pkg.link, size: pkg.size, checksum: pkg.checksum, name: pkg.name };
 }
 
 ipcMain.handle('check-update', async () => {
@@ -179,23 +327,22 @@ ipcMain.handle('check-update', async () => {
     const json = await fetchJson(UPDATE_CHECK_URL);
     if (!json || !json.version) return { hasUpdate: false };
     const hasUpdate = compareVersions(json.version, CURRENT_VERSION) > 0;
-    return { hasUpdate, version: json.version, url: json.url, notes: json.notes || '' };
+    return { hasUpdate, version: json.version, url: json.url, notes: json.notes || '', sha256: json.sha256 || null };
   } catch (err) {
     return { hasUpdate: false, error: err.message };
   }
 });
 
-ipcMain.handle('download-update', async (_, url) => {
+ipcMain.handle('download-update', async (_, url, expectedSha256) => {
   const tmpPath = path.join(app.getPath('temp'), 'PaltoCraft-Update.exe');
   try {
     await downloadFile(url, tmpPath, (received, total) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-progress', { received, total });
-      }
-    });
+      safeSend('update-progress', { received, total });
+    }, { expectedSha256: expectedSha256 || undefined, timeoutMs: 300_000 });
     return { success: true, path: tmpPath };
   } catch (err) {
     try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch {}
+    try { if (fs.existsSync(tmpPath + '.part')) fs.unlinkSync(tmpPath + '.part'); } catch {}
     return { success: false, error: err.message };
   }
 });
@@ -220,29 +367,34 @@ ipcMain.handle('check-java', async (_, mcVersion, gameDir, versionsManifest) => 
 
 ipcMain.handle('download-java', async (_, javaVer, gameDir) => {
   const javaDir = getJavaDir(gameDir, javaVer);
-  const tmpZip = path.join(app.getPath('temp'), `java-${javaVer}-jre.zip`);
+  let tmpArchive = null;
 
   try {
-    mainWindow.webContents.send('java-status', { stage: 'fetch-url', javaVer });
-    const { url, size } = await getAdoptiumDownloadUrl(javaVer);
+    safeSend('java-status', { stage: 'fetch-url', javaVer });
+    const { url, size, checksum, name } = await getAdoptiumDownloadUrl(javaVer);
+    const ext = (name && name.toLowerCase().endsWith('.tar.gz')) ? '.tar.gz'
+              : (name && name.toLowerCase().endsWith('.zip'))    ? '.zip'
+              : (process.platform === 'win32' ? '.zip' : '.tar.gz');
+    tmpArchive = path.join(app.getPath('temp'), `paltocraft-java-${javaVer}${ext}`);
 
-    mainWindow.webContents.send('java-status', { stage: 'downloading', javaVer, size });
-    await downloadFile(url, tmpZip, (received, total) => {
-      mainWindow.webContents.send('java-progress', { received, total });
-    });
+    safeSend('java-status', { stage: 'downloading', javaVer, size });
+    await downloadFile(url, tmpArchive, (received, total) => {
+      safeSend('java-progress', { received, total });
+    }, { expectedSha256: checksum || undefined, timeoutMs: 600_000 });
 
-    mainWindow.webContents.send('java-status', { stage: 'extracting', javaVer });
-    await extractZip(tmpZip, javaDir);
+    safeSend('java-status', { stage: 'extracting', javaVer });
+    await extractArchive(tmpArchive, javaDir);
 
-    try { fs.unlinkSync(tmpZip); } catch {}
+    try { fs.unlinkSync(tmpArchive); } catch {}
 
     const javaExe = findJavaExe(javaDir);
-    if (!javaExe) throw new Error('java.exe не найден после распаковки');
+    if (!javaExe) throw new Error('Java executable не найден после распаковки');
 
-    mainWindow.webContents.send('java-status', { stage: 'done', javaVer, javaExe });
+    safeSend('java-status', { stage: 'done', javaVer, javaExe });
     return { success: true, javaExe };
   } catch (err) {
-    try { if (fs.existsSync(tmpZip)) fs.unlinkSync(tmpZip); } catch {}
+    try { if (tmpArchive && fs.existsSync(tmpArchive)) fs.unlinkSync(tmpArchive); } catch {}
+    try { if (tmpArchive && fs.existsSync(tmpArchive + '.part')) fs.unlinkSync(tmpArchive + '.part'); } catch {}
     return { success: false, error: err.message };
   }
 });
@@ -268,7 +420,12 @@ if (!gotSingleLock) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function createTray() {
-  tray = new Tray(path.join(__dirname, 'assets', 'icon.ico'));
+  try {
+    tray = new Tray(path.join(__dirname, 'assets', 'icon.ico'));
+  } catch (e) {
+    console.warn('[tray] failed to create:', e.message);
+    return;
+  }
   tray.setToolTip('PaltoCraft');
 
   const menu = Menu.buildFromTemplate([
@@ -313,12 +470,22 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
       preload: path.join(__dirname, 'preload.js')
     }
   });
 
   mainWindow.loadFile('index.html');
   mainWindow.setMenuBarVisibility(false);
+
+  // Block all navigation — the launcher is single-page; clicks to external URLs go to the OS browser.
+  mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) { try { shell.openExternal(url); } catch {} }
+    return { action: 'deny' };
+  });
 
   // Hide to tray instead of closing when X is clicked
   mainWindow.on('close', (e) => {
@@ -338,16 +505,57 @@ app.whenReady().then(() => {
 app.on('before-quit', () => { isQuitting = true; });
 app.on('window-all-closed', () => { /* kept alive via tray */ });
 
-ipcMain.on('window-minimize', () => mainWindow.minimize());
+ipcMain.on('window-minimize', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize(); });
 ipcMain.on('window-maximize', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
   else mainWindow.maximize();
 });
-ipcMain.on('window-close', () => mainWindow.hide());
+ipcMain.on('window-close', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); });
 
-ipcMain.handle('store-get', (_, key) => store.get(key));
-ipcMain.handle('store-set', (_, key, value) => store.set(key, value));
-ipcMain.handle('store-delete', (_, key) => store.delete(key));
+// Store: encrypt confidential keys at rest via Electron safeStorage (DPAPI/Keychain/libsecret).
+function encryptStoreValue(value) {
+  if (!safeStorage || !safeStorage.isEncryptionAvailable()) return value;
+  const json = JSON.stringify(value);
+  const buf = safeStorage.encryptString(json);
+  return { __enc: 'safeStorage', data: buf.toString('base64') };
+}
+function decryptStoreValue(stored) {
+  if (!stored || typeof stored !== 'object' || stored.__enc !== 'safeStorage') return stored;
+  if (!safeStorage || !safeStorage.isEncryptionAvailable()) return null;
+  try {
+    const buf = Buffer.from(stored.data, 'base64');
+    return JSON.parse(safeStorage.decryptString(buf));
+  } catch { return null; }
+}
+
+ipcMain.handle('store-get', (_, key) => {
+  if (typeof key !== 'string' || !SAFE_KEY_RE.test(key)) return undefined;
+  const raw = store.get(key);
+  if (ENCRYPTED_KEYS.has(key)) return decryptStoreValue(raw);
+  return raw;
+});
+ipcMain.handle('store-set', (_, key, value) => {
+  if (typeof key !== 'string' || !SAFE_KEY_RE.test(key)) return false;
+  if (ENCRYPTED_KEYS.has(key)) store.set(key, encryptStoreValue(value));
+  else store.set(key, value);
+  return true;
+});
+ipcMain.handle('store-delete', (_, key) => {
+  if (typeof key !== 'string' || !SAFE_KEY_RE.test(key)) return false;
+  store.delete(key);
+  return true;
+});
+
+// Internal helpers for main-process code that needs to read encrypted values directly.
+function storeGetSecure(key) {
+  const raw = store.get(key);
+  return ENCRYPTED_KEYS.has(key) ? decryptStoreValue(raw) : raw;
+}
+function storeSetSecure(key, value) {
+  if (ENCRYPTED_KEYS.has(key)) store.set(key, encryptStoreValue(value));
+  else store.set(key, value);
+}
 
 ipcMain.handle('get-default-gamedir', () => getDefaultGameDir());
 
@@ -367,7 +575,7 @@ ipcMain.handle('check-version', (_, gameDir, version) => {
 });
 
 ipcMain.handle('ensure-vanilla', async (_, mcVersion, gameDir) => {
-  const send = (data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-status', data); };
+  const send = (data) => safeSend('mod-status', data);
   try {
     const dir = gameDir || getDefaultGameDir();
     const versionDir = path.join(dir, 'versions', mcVersion);
@@ -395,12 +603,14 @@ ipcMain.handle('ensure-vanilla', async (_, mcVersion, gameDir) => {
     }
 
     if (!fs.existsSync(versionJarPath)) {
-      const jarUrl = versionData.downloads && versionData.downloads.client && versionData.downloads.client.url;
+      const clientInfo = versionData.downloads && versionData.downloads.client;
+      const jarUrl = clientInfo && clientInfo.url;
+      const jarSha1 = clientInfo && clientInfo.sha1;
       if (!jarUrl) throw new Error('Не найдена ссылка на jar для ' + mcVersion);
       send({ stage: 'downloading-vanilla', ver: mcVersion });
       await downloadFile(jarUrl, versionJarPath, (received, total) => {
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-progress', { received, total });
-      });
+        safeSend('mod-progress', { received, total });
+      }, { expectedSha1: jarSha1 || undefined, timeoutMs: 600_000 });
     }
 
     send({ stage: 'done-vanilla', ver: mcVersion });
@@ -411,26 +621,28 @@ ipcMain.handle('ensure-vanilla', async (_, mcVersion, gameDir) => {
 });
 
 ipcMain.handle('auth-microsoft', async () => {
+  let authManager;
+  const onLoad = (asset, message) => safeSend('auth-update', { asset, message });
   try {
     const { Auth } = require('msmc');
-    const authManager = new Auth('select_account');
-
-    authManager.on('load', (asset, message) => {
-      mainWindow.webContents.send('auth-update', { asset, message });
-    });
+    authManager = new Auth('select_account');
+    authManager.on('load', onLoad);
 
     const xboxManager = await authManager.launch('electron');
     const mcToken = await xboxManager.getMinecraft();
     const mclcToken = mcToken.mclc();
     const profile = mcToken.profile;
 
-    store.set('auth-token', mclcToken);
-    store.set('auth-profile', profile);
-    store.set('auth-refresh', xboxManager.save()); // Microsoft refresh token
+    storeSetSecure('auth-token', mclcToken);
+    storeSetSecure('auth-profile', profile);
+    storeSetSecure('auth-refresh', xboxManager.save()); // Microsoft refresh token
 
     return { success: true, token: mclcToken, profile };
   } catch (err) {
     return { success: false, error: err.message };
+  } finally {
+    try { if (authManager && typeof authManager.removeListener === 'function') authManager.removeListener('load', onLoad); } catch {}
+    try { if (authManager && typeof authManager.removeAllListeners === 'function') authManager.removeAllListeners('load'); } catch {}
   }
 });
 
@@ -439,13 +651,13 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
     const { Client } = require('minecraft-launcher-core');
     const launcher = new Client();
 
-    let storedToken = store.get('auth-token');
+    let storedToken = storeGetSecure('auth-token');
     if (!storedToken) {
       return { success: false, error: 'Not authenticated' };
     }
 
     // Check if stored JWT access token is expired
-    const refreshToken = store.get('auth-refresh');
+    const refreshToken = storeGetSecure('auth-refresh');
     let tokenExpired = false;
     try {
       const parts = (storedToken.access_token || '').split('.');
@@ -458,33 +670,29 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
     } catch {}
 
     if (tokenExpired && !refreshToken) {
-      // No refresh token (old login) — force re-login
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('launch-log', { type: 'error', msg: 'Сессия истекла. Выйдите из аккаунта и войдите снова.' });
-      }
+      safeSend('launch-log', { type: 'error', msg: 'Сессия истекла. Выйдите из аккаунта и войдите снова.' });
       return { success: false, error: 'Сессия истекла — выйдите из аккаунта и войдите снова в лаунчере.' };
     }
 
     // Refresh Microsoft session before launching to fix "Invalid session" on online servers
     if (refreshToken) {
+      let refreshAuth;
       try {
         const { Auth } = require('msmc');
-        const authManager = new Auth('select_account');
-        const xboxManager = await authManager.refresh(refreshToken);
+        refreshAuth = new Auth('select_account');
+        const xboxManager = await refreshAuth.refresh(refreshToken);
         const mcToken = await xboxManager.getMinecraft();
         storedToken = mcToken.mclc();
-        store.set('auth-token', storedToken);
-        store.set('auth-refresh', xboxManager.save());
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('launch-log', { type: 'info', msg: 'Сессия авторизации обновлена.' });
-        }
+        storeSetSecure('auth-token', storedToken);
+        storeSetSecure('auth-refresh', xboxManager.save());
+        safeSend('launch-log', { type: 'info', msg: 'Сессия авторизации обновлена.' });
       } catch (refreshErr) {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('launch-log', { type: 'warn', msg: 'Не удалось обновить сессию: ' + refreshErr.message });
-        }
+        safeSend('launch-log', { type: 'warn', msg: 'Не удалось обновить сессию: ' + refreshErr.message });
         if (tokenExpired) {
           return { success: false, error: 'Сессия истекла — выйдите из аккаунта и войдите снова.' };
         }
+      } finally {
+        try { refreshAuth && refreshAuth.removeAllListeners && refreshAuth.removeAllListeners(); } catch {}
       }
     }
 
@@ -500,6 +708,17 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
     const versionBlock = options.customVersion
       ? { number: options.version, type: options.versionType || 'release', custom: options.customVersion }
       : { number: options.version, type: options.versionType || 'release' };
+
+    // Collect JVM args. For Fabric, optionally inject -Dfabric.addMods so a per-version mods folder loads.
+    const extraJvm = [];
+    if (options.jvmArgs) {
+      for (const a of String(options.jvmArgs).split(' ')) {
+        if (a) extraJvm.push(a);
+      }
+    }
+    if (options.fabricExtraModsDir) {
+      extraJvm.push(`-Dfabric.addMods=${options.fabricExtraModsDir}`);
+    }
 
     const launchOptions = {
       authorization: storedToken,
@@ -520,39 +739,37 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
       }
     };
 
-    if (options.jvmArgs) {
-      launchOptions.customArgs = options.jvmArgs.split(' ').filter(Boolean);
+    if (extraJvm.length) {
+      launchOptions.customArgs = extraJvm;
     }
 
     launcher.on('debug', (e) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('launch-log', { type: 'debug', msg: String(e) });
-      }
+      safeSend('launch-log', { type: 'debug', msg: String(e) });
     });
     launcher.on('data', (e) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('launch-log', { type: 'data', msg: String(e) });
-      }
+      safeSend('launch-log', { type: 'data', msg: String(e) });
     });
     launcher.on('progress', (e) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('launch-progress', e);
-      }
+      safeSend('launch-progress', e);
     });
     launcher.on('close', (code) => {
       activeGameProcess = null;
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('launch-close', code);
-        if (options.hideLauncher) mainWindow.show();
-      }
+      // Drop all listeners we attached to this launcher to avoid retention.
+      try { launcher.removeAllListeners(); } catch {}
+      safeSend('launch-close', code);
+      if (mainWindow && !mainWindow.isDestroyed() && options.hideLauncher) mainWindow.show();
     });
 
     activeGameProcess = await launcher.launch(launchOptions);
 
     if (options.closeLauncher) {
-      mainWindow.close();
+      // Allow the close handler to actually quit instead of hiding to tray.
+      isQuitting = true;
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+      // Schedule app.quit() in case close() is also intercepted somewhere.
+      setTimeout(() => { try { app.quit(); } catch {} }, 300);
     } else if (options.hideLauncher) {
-      mainWindow.hide();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
     }
 
     return { success: true };
@@ -617,7 +834,17 @@ ipcMain.handle('check-loader', (_, loader, mcVersion, gameDir) => {
   if (loader === 'fabric') {
     found = entries.find(e => e.startsWith('fabric-loader-') && e.endsWith('-' + mcVersion));
   } else if (loader === 'forge') {
-    found = entries.find(e => e.startsWith('forge-' + mcVersion + '-') || e.startsWith(mcVersion + '-forge'));
+    // Forge produces several layouts depending on installer/MC version:
+    //   <mcVer>-forge-<forgeVer>     (modern 1.16+)
+    //   forge-<mcVer>-<forgeVer>     (older installers)
+    //   <mcVer>-forge<forgeVer>      (some very old)
+    found = entries.find(e =>
+      e === mcVersion + '-forge' ||
+      e.startsWith(mcVersion + '-forge-') ||
+      e.startsWith(mcVersion + '-forge') ||
+      e.startsWith('forge-' + mcVersion + '-') ||
+      e.startsWith(mcVersion + '-Forge')
+    );
   } else if (loader === 'neoforge') {
     const minorVer = mcVersion.split('.').slice(1).join('.');
     found = entries.find(e => e.startsWith('neoforge-' + minorVer + '.'));
@@ -626,7 +853,7 @@ ipcMain.handle('check-loader', (_, loader, mcVersion, gameDir) => {
 });
 
 ipcMain.handle('install-fabric', async (_, mcVersion, gameDir) => {
-  const send = (data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-status', data); };
+  const send = (data) => safeSend('mod-status', data);
   try {
     send({ stage: 'fetch-loader', ver: mcVersion });
     const loaders = await fetchJson('https://meta.fabricmc.net/v2/versions/loader/' + mcVersion);
@@ -662,8 +889,37 @@ ipcMain.handle('install-fabric', async (_, mcVersion, gameDir) => {
   }
 });
 
+// Pick the Java the Forge/NeoForge installer itself runs on. The launcher's own Java cache is preferred,
+// otherwise fall back to system 'java'. Old Forge (≤1.12) needs Java 8, modern 1.16–1.20 Java 17,
+// 1.20.5+/1.21+ Java 21.
+function pickInstallerJava(mcVersion, gameDir) {
+  const needed = (() => {
+    if (!mcVersion) return 17;
+    const parts = mcVersion.split('.').map(n => parseInt(n, 10) || 0);
+    const minor = parts[1] ?? 0, patch = parts[2] ?? 0;
+    if (minor <= 12) return 8;
+    if (minor <= 16) return 8;
+    if (minor === 17) return 16;
+    if (minor === 20 && patch >= 5) return 21;
+    if (minor >= 21) return 21;
+    return 17;
+  })();
+
+  const dir = gameDir || getDefaultGameDir();
+  // Try the exact required java, then a few fallbacks in priority order.
+  const candidates = [needed, 17, 21, 8, 16, 11];
+  const seen = new Set();
+  for (const v of candidates) {
+    if (seen.has(v)) continue;
+    seen.add(v);
+    const exe = findJavaExe(getJavaDir(dir, v));
+    if (exe) return exe;
+  }
+  return 'java';
+}
+
 ipcMain.handle('install-forge', async (_, mcVersion, gameDir) => {
-  const send = (data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-status', data); };
+  const send = (data) => safeSend('mod-status', data);
   try {
     send({ stage: 'fetch-forge-meta', ver: mcVersion });
     const meta = await fetchJson('https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json');
@@ -675,21 +931,27 @@ ipcMain.handle('install-forge', async (_, mcVersion, gameDir) => {
     const tmpPath = path.join(app.getPath('temp'), installerName);
     send({ stage: 'downloading-forge', ver: mcVersion });
     await downloadFile(dlUrl, tmpPath, (received, total) => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-progress', { received, total });
-    });
+      safeSend('mod-progress', { received, total });
+    }, { timeoutMs: 600_000 });
     send({ stage: 'installing-forge', ver: mcVersion });
     const dir = gameDir || getDefaultGameDir();
-    const javaExe = findJavaExe(getJavaDir(dir, 17)) || 'java';
+    const javaExe = pickInstallerJava(mcVersion, dir);
     await new Promise((resolve, reject) => {
-      const child = spawn(javaExe, ['-jar', tmpPath, '--installClient'], { stdio: 'ignore', windowsHide: true });
-      child.on('close', (code) => { code === 0 ? resolve() : reject(new Error('Forge installer завершился с кодом ' + code)); });
-      child.on('error', reject);
+      const child = spawn(javaExe, ['-jar', tmpPath, '--installClient', dir], { stdio: 'ignore', windowsHide: true });
+      const killTimer = setTimeout(() => { try { child.kill(); } catch {}; reject(new Error('Forge installer timed out')); }, 600_000);
+      child.on('close', (code) => { clearTimeout(killTimer); code === 0 ? resolve() : reject(new Error('Forge installer завершился с кодом ' + code)); });
+      child.on('error', (e) => { clearTimeout(killTimer); reject(e); });
     });
     try { fs.unlinkSync(tmpPath); } catch {}
     send({ stage: 'done', ver: mcVersion });
     const versionsDir = path.join(dir, 'versions');
     const entries = fs.existsSync(versionsDir) ? fs.readdirSync(versionsDir) : [];
-    const found = entries.find(e => e.startsWith('forge-' + mcVersion + '-') || e.startsWith(mcVersion + '-forge'));
+    const found = entries.find(e =>
+      e === mcVersion + '-forge' ||
+      e.startsWith(mcVersion + '-forge-') ||
+      e.startsWith(mcVersion + '-forge') ||
+      e.startsWith('forge-' + mcVersion + '-')
+    );
     return { success: true, versionId: found || ('forge-' + fullVer) };
   } catch (err) {
     return { success: false, error: err.message };
@@ -697,18 +959,25 @@ ipcMain.handle('install-forge', async (_, mcVersion, gameDir) => {
 });
 
 ipcMain.handle('install-neoforge', async (_, mcVersion, gameDir) => {
-  const send = (data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-status', data); };
+  const send = (data) => safeSend('mod-status', data);
   try {
     send({ stage: 'fetch-neoforge-meta', ver: mcVersion });
     const minorVer = mcVersion.split('.').slice(1).join('.');
     const xmlData = await new Promise((resolve, reject) => {
-      https.get('https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml',
-        { headers: { 'User-Agent': 'PaltoCraft/1.0' } }, (res) => {
+      const req = https.get('https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml',
+        { headers: { 'User-Agent': USER_AGENT }, timeout: 15_000 }, (res) => {
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+            res.resume();
+            return reject(new Error(`HTTP ${res.statusCode} fetching NeoForge metadata`));
+          }
           let d = '';
+          res.setEncoding('utf8');
           res.on('data', c => d += c);
           res.on('end', () => resolve(d));
           res.on('error', reject);
-        }).on('error', reject);
+        });
+      req.on('error', reject);
+      req.on('timeout', () => req.destroy(new Error('timeout')));
     });
     const matches = [...xmlData.matchAll(/<version>([^<]+)<\/version>/g)]
       .map(m => m[1]).filter(v => v.startsWith(minorVer + '.')).sort();
@@ -719,15 +988,16 @@ ipcMain.handle('install-neoforge', async (_, mcVersion, gameDir) => {
     const tmpPath = path.join(app.getPath('temp'), installerName);
     send({ stage: 'downloading-neoforge', ver: mcVersion });
     await downloadFile(dlUrl, tmpPath, (received, total) => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-progress', { received, total });
-    });
+      safeSend('mod-progress', { received, total });
+    }, { timeoutMs: 600_000 });
     send({ stage: 'installing-neoforge', ver: mcVersion });
     const dir = gameDir || getDefaultGameDir();
-    const javaExe = findJavaExe(getJavaDir(dir, 21)) || 'java';
+    const javaExe = pickInstallerJava(mcVersion, dir);
     await new Promise((resolve, reject) => {
-      const child = spawn(javaExe, ['-jar', tmpPath, '--installClient'], { stdio: 'ignore', windowsHide: true });
-      child.on('close', (code) => { code === 0 ? resolve() : reject(new Error('NeoForge installer завершился с кодом ' + code)); });
-      child.on('error', reject);
+      const child = spawn(javaExe, ['-jar', tmpPath, '--installClient', dir], { stdio: 'ignore', windowsHide: true });
+      const killTimer = setTimeout(() => { try { child.kill(); } catch {}; reject(new Error('NeoForge installer timed out')); }, 600_000);
+      child.on('close', (code) => { clearTimeout(killTimer); code === 0 ? resolve() : reject(new Error('NeoForge installer завершился с кодом ' + code)); });
+      child.on('error', (e) => { clearTimeout(killTimer); reject(e); });
     });
     try { fs.unlinkSync(tmpPath); } catch {}
     send({ stage: 'done', ver: mcVersion });
@@ -737,24 +1007,31 @@ ipcMain.handle('install-neoforge', async (_, mcVersion, gameDir) => {
   }
 });
 
-ipcMain.handle('download-mod-modrinth', async (_, modId, mcVersion, loader, gameDir) => {
-  const send = (data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-status', data); };
+// Download a mod from Modrinth. For Fabric we keep the per-version subfolder (mods/{mcVer}/) only when the
+// caller passes useSubfolder=true (renderer adds -Dfabric.addMods JVM arg in that case). For Forge/NeoForge,
+// the loader can't read subfolders — we install directly into mods/ so the game actually loads them.
+ipcMain.handle('download-mod-modrinth', async (_, modId, mcVersion, loader, gameDir, useSubfolder) => {
+  const send = (data) => safeSend('mod-status', data);
   try {
-    const apiUrl = 'https://api.modrinth.com/v2/project/' + modId + '/version?game_versions=%5B%22' + mcVersion + '%22%5D&loaders=%5B%22' + loader + '%22%5D';
+    const apiUrl = 'https://api.modrinth.com/v2/project/' + encodeURIComponent(modId)
+      + '/version?game_versions=' + encodeURIComponent(JSON.stringify([mcVersion]))
+      + '&loaders=' + encodeURIComponent(JSON.stringify([loader]));
     const versions = await fetchJson(apiUrl);
-    if (!versions || !versions.length) return { success: false, notFound: true };
-    const file = versions[0].files.find(f => f.primary) || versions[0].files[0];
+    if (!Array.isArray(versions) || !versions.length) return { success: false, notFound: true };
+    // Pick newest by publish date (API order isn't contractually newest-first).
+    versions.sort((a, b) => new Date(b.date_published || 0) - new Date(a.date_published || 0));
+    const release = versions[0];
+    const file = (release.files || []).find(f => f.primary) || (release.files || [])[0];
     if (!file) return { success: false, notFound: true };
     const dir = gameDir || getDefaultGameDir();
-    // Use version-specific subfolder so mods don't conflict across versions
-    // Fabric Loader automatically loads mods from mods/{mcVersion}/ subfolder
-    const modsDir = path.join(dir, 'mods', mcVersion);
+    const modsDir = useSubfolder ? path.join(dir, 'mods', mcVersion) : path.join(dir, 'mods');
     if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
     const dest = path.join(modsDir, file.filename);
-    if (fs.existsSync(dest)) return { success: true, skipped: true };
+    if (fs.existsSync(dest)) return { success: true, skipped: true, dest };
     send({ stage: 'downloading-mod', modId, filename: file.filename });
-    await downloadFile(file.url, dest);
-    return { success: true, skipped: false };
+    const sha1 = file.hashes && file.hashes.sha1;
+    await downloadFile(file.url, dest, undefined, { expectedSha1: sha1 || undefined, timeoutMs: 300_000 });
+    return { success: true, skipped: false, dest };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -777,6 +1054,19 @@ ipcMain.handle('open-path', async (_, folderPath) => {
   catch (err) { return { success: false, error: err.message }; }
 });
 
+// External URLs only — block file://, javascript:, etc. so renderer can't trick the main process.
+ipcMain.handle('open-external', async (_, url) => {
+  try {
+    if (typeof url !== 'string') return { success: false, error: 'bad url' };
+    const parsed = new URL(url);
+    if (!/^https?:$/.test(parsed.protocol)) return { success: false, error: 'protocol not allowed' };
+    await shell.openExternal(parsed.toString());
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('get-app-version', () => CURRENT_VERSION);
+
 ipcMain.handle('check-admin', (_, uuid) => {
   if (!uuid) return false;
   const h = '__ADMIN_HASH__';
@@ -795,29 +1085,45 @@ ipcMain.handle('get-servers', async () => {
 
 ipcMain.handle('cache-set', (_, key, value) => {
   try {
+    if (!isValidCacheKey(key)) return false;
     const cacheDir = path.join(app.getPath('userData'), 'cache');
     if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-    fs.writeFileSync(path.join(cacheDir, key), value, 'utf8');
+    const filePath = path.join(cacheDir, key);
+    // Defense in depth: ensure we never escape the cache dir even if the regex changed.
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(cacheDir) + path.sep)) return false;
+    if (typeof value !== 'string') return false;
+    if (value.length > 32 * 1024 * 1024) return false; // 32 MB cap
+    fs.writeFileSync(resolved, value, 'utf8');
     return true;
   } catch { return false; }
 });
 
 ipcMain.handle('cache-get', (_, key) => {
   try {
-    const filePath = path.join(app.getPath('userData'), 'cache', key);
-    if (!fs.existsSync(filePath)) return null;
-    return fs.readFileSync(filePath, 'utf8');
+    if (!isValidCacheKey(key)) return null;
+    const cacheDir = path.join(app.getPath('userData'), 'cache');
+    const filePath = path.join(cacheDir, key);
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(cacheDir) + path.sep)) return null;
+    if (!fs.existsSync(resolved)) return null;
+    return fs.readFileSync(resolved, 'utf8');
   } catch { return null; }
 });
 
 ipcMain.handle('get-versions', async () => {
   try {
-    return new Promise((resolve) => {
+    return await new Promise((resolve) => {
       const req = https.get(
         'https://launchermeta.mojang.com/mc/game/version_manifest.json',
-        { timeout: 10000 },
+        { headers: { 'User-Agent': USER_AGENT }, timeout: 15000 },
         (res) => {
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+            res.resume();
+            return resolve({ success: false, versions: [], error: `HTTP ${res.statusCode}` });
+          }
           let data = '';
+          res.setEncoding('utf8');
           res.on('data', chunk => data += chunk);
           res.on('end', () => {
             try {
@@ -829,10 +1135,10 @@ ipcMain.handle('get-versions', async () => {
           });
         }
       );
-      req.on('timeout', () => { req.destroy(); resolve({ success: false, versions: [] }); });
+      req.on('timeout', () => { req.destroy(new Error('timeout')); resolve({ success: false, versions: [] }); });
       req.on('error', (e) => resolve({ success: false, error: e.message, versions: [] }));
     });
   } catch (err) {
-    return { success: false, error: err.message };
+    return { success: false, error: err.message, versions: [] };
   }
 });

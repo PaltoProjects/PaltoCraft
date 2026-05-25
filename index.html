@@ -3,6 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--
+    Content Security Policy. Strict baseline:
+     - default-src 'self' — only local files unless explicitly allowed
+     - skin/avatar use data: URLs from main process (via get-skin-data)
+     - connect-src is empty: renderer cannot talk to the network directly; all HTTP goes through IPC
+     - style 'unsafe-inline' is needed because the renderer sets inline styles for skin canvas and particles
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
   <title>PaltoCraft</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -16,6 +25,17 @@
       <button class="tb-btn" id="btn-minimize">&#8722;</button>
       <button class="tb-btn" id="btn-maximize">&#9744;</button>
       <button class="tb-btn close" id="btn-close">&#10005;</button>
+    </div>
+  </div>
+
+  <div class="alert-overlay" id="alert-overlay" style="display:none">
+    <div class="alert-card">
+      <div class="alert-icon" id="alert-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="40" height="40"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16" x2="12" y2="16"/></svg>
+      </div>
+      <h3 class="alert-title" id="alert-title">PaltoCraft</h3>
+      <p class="alert-msg" id="alert-msg"></p>
+      <button class="btn btn-primary" id="alert-ok">OK</button>
     </div>
   </div>
 
@@ -257,7 +277,7 @@
                 <img src="assets/creeper.svg" width="36" height="36" alt="">
                 <span>PaltoCraft</span>
               </div>
-              <p class="about-ver">Версия 1.0.3</p>
+              <p class="about-ver">Версия <span id="about-version">…</span></p>
               <p class="about-desc">Лаунчер Minecraft с официальной авторизацией Microsoft. Поддерживает все версии игры.</p>
             </div>
           </div>

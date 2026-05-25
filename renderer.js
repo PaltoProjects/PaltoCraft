@@ -3,16 +3,37 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById(`page-${btn.dataset.page}`).classList.add('active');
+    const page = document.getElementById(`page-${btn.dataset.page}`);
+    if (page) page.classList.add('active');
   });
 });
 
-document.getElementById('btn-minimize').addEventListener('click', () => window.launcher.minimize());
-document.getElementById('btn-maximize').addEventListener('click', () => window.launcher.maximize());
-document.getElementById('btn-close').addEventListener('click', () => window.launcher.close());
+const $ = (id) => document.getElementById(id);
+
+$('btn-minimize').addEventListener('click', () => window.launcher.minimize());
+$('btn-maximize').addEventListener('click', () => window.launcher.maximize());
+$('btn-close').addEventListener('click', () => window.launcher.close());
+
+// Custom modal replacement for blocking browser alert(). One-shot, never blocks layout.
+function showAlert(message, opts = {}) {
+  const overlay = $('alert-overlay');
+  if (!overlay) { console.error('[alert]', message); return; }
+  const icon = $('alert-icon');
+  const title = $('alert-title');
+  const msg = $('alert-msg');
+  if (icon) icon.className = 'alert-icon' + (opts.type ? ' ' + opts.type : '');
+  if (title) title.textContent = opts.title || (opts.type === 'error' ? 'Ошибка' : 'PaltoCraft');
+  if (msg) msg.textContent = String(message ?? '');
+  overlay.style.display = 'flex';
+  const close = () => { overlay.style.display = 'none'; document.removeEventListener('keydown', onKey); };
+  const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter') close(); };
+  $('alert-ok').onclick = close;
+  document.addEventListener('keydown', onKey);
+}
 
 function spawnParticles() {
   const container = document.getElementById('particles');
+  if (!container) return;
   const colors = ['#5b6af5', '#7c3aed', '#22c55e', '#60a5fa', '#f59e0b'];
   for (let i = 0; i < 25; i++) {
     const p = document.createElement('div');
@@ -32,13 +53,23 @@ function spawnParticles() {
 }
 spawnParticles();
 
+// Pause CSS animations when the launcher window is hidden (tray) — saves CPU during gameplay.
+document.addEventListener('visibilitychange', () => {
+  const container = document.getElementById('particles');
+  if (!container) return;
+  container.style.animationPlayState = document.hidden ? 'paused' : 'running';
+  container.querySelectorAll('.particle').forEach(p => {
+    p.style.animationPlayState = document.hidden ? 'paused' : 'running';
+  });
+});
+
 let currentUser = null;
 
 async function loadAuth() {
   const token = await window.launcher.storeGet('auth-token');
   const profile = await window.launcher.storeGet('auth-profile');
   if (token) {
-    appendConsole('info', 'Найден сохранённый аккаунт, выполняется вход...');
+    appendConsole('info', 'Найдён сохранённый аккаунт, выполняется вход...');
     setLoggedIn(token, profile);
   } else {
     appendConsole('info', 'Аккаунт не найден — требуется авторизация.');
@@ -46,12 +77,12 @@ async function loadAuth() {
 }
 
 function setLoggedIn(token, profile) {
-  currentUser = token;
+  currentUser = profile || token || null;
   document.getElementById('state-login').style.display = 'none';
   document.getElementById('state-launch').style.display = 'flex';
 
-  const name = (profile && profile.name) || token.name || 'Player';
-  const rawUuid = (profile && profile.id) || token.uuid || '';
+  const name = (profile && profile.name) || (token && token.name) || 'Player';
+  const rawUuid = (profile && profile.id) || (token && token.uuid) || '';
   const uuid = rawUuid.replace(/-/g, '');
 
   document.getElementById('launch-username').textContent = name;
@@ -60,7 +91,7 @@ function setLoggedIn(token, profile) {
 
   appendConsole('info', `Вошли как: ${name} (UUID: ${uuid || 'неизвестен'})`);
 
-  const initial = name[0].toUpperCase();
+  const initial = (name[0] || '?').toUpperCase();
   document.getElementById('launch-avatar').textContent = initial;
   document.getElementById('profile-avatar').textContent = initial;
 
@@ -87,7 +118,7 @@ document.getElementById('btn-login').addEventListener('click', async () => {
   if (result.success) {
     setLoggedIn(result.token, result.profile);
   } else {
-    alert('Ошибка входа: ' + (result.error || 'Неизвестная ошибка'));
+    showAlert('Ошибка входа: ' + (result.error || 'Неизвестная ошибка'), { type: 'error' });
   }
 
   btn.disabled = false;
@@ -305,8 +336,8 @@ document.getElementById('btn-open-modsdir').addEventListener('click', async () =
   const settings = await getSettings();
   const gameDir = settings.gameDir || await window.launcher.getDefaultGameDir();
   const version = document.getElementById('version-select').value;
-  // For optimized versions mods are in mods/{version}/, otherwise mods/
-  const modsDir = (activeFilter === 'optimized' && version)
+  // Fabric reads from mods/{version}/ via the JVM arg we inject; Forge/NeoForge use mods/.
+  const modsDir = (activeFilter === 'optimized' && version && activeOptLoader === 'fabric')
     ? gameDir + '/mods/' + version
     : gameDir + '/mods';
   const r = await window.launcher.openPath(modsDir);
@@ -533,11 +564,15 @@ document.getElementById('btn-reset-settings').addEventListener('click', async ()
 
 function appendConsole(type, msg) {
   const el = document.getElementById('console-output');
+  if (!el) return;
   const line = document.createElement('div');
   line.className = `log-${type}`;
   const time = new Date().toLocaleTimeString();
   line.textContent = `[${time}] ${msg}`;
   el.appendChild(line);
+  // Bounded ring — cap at 2000 lines so MCLC debug spam doesn't push the renderer into the swap.
+  const MAX = 2000;
+  while (el.childElementCount > MAX) el.removeChild(el.firstChild);
   el.scrollTop = el.scrollHeight;
 }
 
@@ -663,6 +698,7 @@ function renderSkinFace(dataUrl, displaySize) {
 
 
 let _updateUrl = null;
+let _updateSha256 = null;
 let _downloadedPath = null;
 
 async function checkForUpdates() {
@@ -671,6 +707,7 @@ async function checkForUpdates() {
     if (!result.hasUpdate) return;
 
     _updateUrl = result.url;
+    _updateSha256 = result.sha256 || null;
 
     document.getElementById('update-version-label').textContent = `v${result.version}`;
     document.getElementById('update-notes').textContent = result.notes || '';
@@ -688,7 +725,13 @@ document.getElementById('btn-update').addEventListener('click', async () => {
     btn.disabled = true;
     btn.textContent = 'Установка...';
     appendConsole('info', 'Запуск установщика...');
-    await window.launcher.installUpdate(_downloadedPath);
+    const r = await window.launcher.installUpdate(_downloadedPath);
+    if (!r || !r.success) {
+      appendConsole('error', 'Ошибка запуска установщика: ' + ((r && r.error) || 'unknown'));
+      btn.disabled = false;
+      btn.textContent = 'Повторить';
+      showAlert('Не удалось запустить установщик. Скачайте обновление вручную.', { type: 'error' });
+    }
     return;
   }
 
@@ -711,7 +754,7 @@ document.getElementById('btn-update').addEventListener('click', async () => {
   });
 
   appendConsole('info', `Загрузка обновления: ${_updateUrl}`);
-  const result = await window.launcher.downloadUpdate(_updateUrl);
+  const result = await window.launcher.downloadUpdate(_updateUrl, _updateSha256 || undefined);
 
   if (result.success) {
     _downloadedPath = result.path;
@@ -794,12 +837,16 @@ async function handleOptLaunch(btn, mcVersion) {
     }
 
     const mods = (OPT_MODS[mcVersion] || {})[activeOptLoader] || [];
+    // Fabric: keep mods/{mcVer}/ so different MC versions don't collide. We pass
+    // -Dfabric.addMods=<path> via launch options so the loader actually scans it (it doesn't by default).
+    // Forge/NeoForge: install straight into mods/ — modern Forge has no subfolder support.
+    const useSubfolder = activeOptLoader === 'fabric';
     if (mods.length) {
       appendConsole('info', `Проверка ${mods.length} модов...`);
       for (let i = 0; i < mods.length; i++) {
         const modId = mods[i];
         setProgress(`Мод ${i + 1}/${mods.length}: ${modId}`, 60 + Math.round((i / mods.length) * 25));
-        const r = await window.launcher.downloadMod(modId, mcVersion, activeOptLoader, gameDir);
+        const r = await window.launcher.downloadMod(modId, mcVersion, activeOptLoader, gameDir, useSubfolder);
         if (r.success && !r.skipped) appendConsole('info', `${modId} — скачан`);
         else if (r.skipped) appendConsole('info', `${modId} — уже есть`);
         else appendConsole('warn', `${modId} — не найден для ${mcVersion}/${activeOptLoader}`);
@@ -859,6 +906,9 @@ async function handleOptLaunch(btn, mcVersion) {
       minRam: settings.minRam || 2,
       javaPath: javaPath || 'java',
       jvmArgs: settings.jvmArgs || '',
+      // Tell Fabric loader to also scan the per-version subfolder where we placed the mods.
+      // For Forge/NeoForge this is undefined, so MCLC just uses the default mods/ behavior.
+      fabricExtraModsDir: activeOptLoader === 'fabric' ? `${gameDir}/mods/${mcVersion}` : undefined,
       winWidth: settings.winWidth || 854,
       winHeight: settings.winHeight || 480,
       fullscreen: settings.fullscreen || false,
@@ -1002,6 +1052,16 @@ function _renderAdminRows() {
 
 appendConsole('info', 'PaltoCraft запущен.');
 appendConsole('info', `Платформа: ${navigator.platform} | Electron`);
+
+// Wire dynamic version into the About card.
+(async () => {
+  try {
+    const v = await window.launcher.getAppVersion();
+    const el = document.getElementById('about-version');
+    if (el && v) el.textContent = v;
+  } catch {}
+})();
+
 loadAuth();
 loadSettings();
 checkForUpdates();

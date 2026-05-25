@@ -6,10 +6,14 @@ const JavaScriptObfuscator = require('javascript-obfuscator');
 
 const SRC_DIR = __dirname;
 const BUILD_DIR = path.join(__dirname, '.build');
+const PKG = JSON.parse(fs.readFileSync(path.join(SRC_DIR, 'package.json'), 'utf8'));
+const VERSION = PKG.version;
 
 const JS_FILES = ['main.js', 'preload.js', 'renderer.js', 'store.js'];
 const COPY_FILES = ['index.html', 'styles.css', 'package.json', 'package-lock.json', 'version.json', 'servers.json', 'LICENSE'];
 const COPY_DIRS = ['assets', 'node_modules'];
+// Files whose integrity we verify at runtime (main.js included so check-admin can't be patched silently).
+const INTEGRITY_FILES = ['main.js', 'preload.js', 'renderer.js', 'store.js', 'index.html', 'styles.css', 'package.json'];
 
 const OBFUSCATOR_OPTIONS = {
   compact: true,
@@ -129,9 +133,8 @@ function copyDirs() {
 }
 
 function generateIntegrity() {
-  const files = ['renderer.js', 'preload.js', 'index.html', 'styles.css'];
   const manifest = {};
-  for (const file of files) {
+  for (const file of INTEGRITY_FILES) {
     const filePath = path.join(BUILD_DIR, file);
     if (fs.existsSync(filePath)) {
       manifest[file] = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
@@ -152,7 +155,7 @@ function package_() {
     '--arch=x64',
     '--out=dist',
     '--overwrite',
-    '--app-version=1.0.3',
+    `--app-version=${VERSION}`,
     '--icon=assets/icon.ico',
     '--no-asar',
     '--prune'
@@ -164,16 +167,24 @@ function package_() {
 
 function buildInstaller() {
   console.log('\n📦 Compiling NSIS installer...');
+  // Warn if installer.nsi has a stale APP_VERSION literal — easy to forget on bumps.
+  try {
+    const nsi = fs.readFileSync(path.join(SRC_DIR, 'installer.nsi'), 'utf8');
+    const m = nsi.match(/!define\s+APP_VERSION\s+"([^"]+)"/);
+    if (m && m[1] !== VERSION) {
+      console.warn(`⚠ installer.nsi APP_VERSION="${m[1]}" but package.json is "${VERSION}". Update installer.nsi.`);
+    }
+  } catch {}
   execSync(
     'powershell -Command "& \'C:\\Program Files (x86)\\NSIS\\makensis.exe\' /INPUTCHARSET UTF8 \'installer.nsi\'"',
     { stdio: 'inherit', cwd: SRC_DIR }
   );
-  console.log('✓ Installer: dist/installer/PaltoCraft-Setup-1.0.3.exe');
+  console.log(`✓ Installer: dist/installer/PaltoCraft-Setup-${VERSION}.exe`);
 }
 
 function packInstaller() {
   const upx = 'C:\\upx\\upx.exe';
-  const exe = path.join(SRC_DIR, 'dist', 'installer', 'PaltoCraft-Setup-1.0.3.exe');
+  const exe = path.join(SRC_DIR, 'dist', 'installer', `PaltoCraft-Setup-${VERSION}.exe`);
   if (!fs.existsSync(upx)) { console.log('⚠ UPX не найден — пропускаем упаковку'); return; }
   if (!fs.existsSync(exe)) { console.log('⚠ Installer не найден — пропускаем UPX'); return; }
   console.log('\n📦 Packing installer with UPX...');
@@ -181,7 +192,7 @@ function packInstaller() {
   console.log('✓ UPX done');
 }
 
-console.log('🔨 PaltoCraft Build\n');
+console.log(`🔨 PaltoCraft Build v${VERSION}\n`);
 clean();
 obfuscateJS();
 copyFiles();
