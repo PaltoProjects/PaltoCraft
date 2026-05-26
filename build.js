@@ -152,7 +152,7 @@ function package_() {
     '--arch=x64',
     '--out=dist',
     '--overwrite',
-    '--app-version=1.0.3',
+    '--app-version=1.1.0',
     '--icon=assets/icon.ico',
     '--no-asar',
     '--prune'
@@ -168,12 +168,12 @@ function buildInstaller() {
     'powershell -Command "& \'C:\\Program Files (x86)\\NSIS\\makensis.exe\' /INPUTCHARSET UTF8 \'installer.nsi\'"',
     { stdio: 'inherit', cwd: SRC_DIR }
   );
-  console.log('✓ Installer: dist/installer/PaltoCraft-Setup-1.0.3.exe');
+  console.log('✓ Installer: dist/installer/PaltoCraft-Setup-1.1.0.exe');
 }
 
 function packInstaller() {
   const upx = 'C:\\upx\\upx.exe';
-  const exe = path.join(SRC_DIR, 'dist', 'installer', 'PaltoCraft-Setup-1.0.3.exe');
+  const exe = path.join(SRC_DIR, 'dist', 'installer', 'PaltoCraft-Setup-1.1.0.exe');
   if (!fs.existsSync(upx)) { console.log('⚠ UPX не найден — пропускаем упаковку'); return; }
   if (!fs.existsSync(exe)) { console.log('⚠ Installer не найден — пропускаем UPX'); return; }
   console.log('\n📦 Packing installer with UPX...');

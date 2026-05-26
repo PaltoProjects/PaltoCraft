@@ -663,6 +663,7 @@ function renderSkinFace(dataUrl, displaySize) {
 
 
 let _updateUrl = null;
+let _updateSha256 = null;
 let _downloadedPath = null;
 
 async function checkForUpdates() {
@@ -671,6 +672,7 @@ async function checkForUpdates() {
     if (!result.hasUpdate) return;
 
     _updateUrl = result.url;
+    _updateSha256 = result.sha256 || null;
 
     document.getElementById('update-version-label').textContent = `v${result.version}`;
     document.getElementById('update-notes').textContent = result.notes || '';
@@ -711,7 +713,7 @@ document.getElementById('btn-update').addEventListener('click', async () => {
   });
 
   appendConsole('info', `Загрузка обновления: ${_updateUrl}`);
-  const result = await window.launcher.downloadUpdate(_updateUrl);
+  const result = await window.launcher.downloadUpdate(_updateUrl, _updateSha256);
 
   if (result.success) {
     _downloadedPath = result.path;

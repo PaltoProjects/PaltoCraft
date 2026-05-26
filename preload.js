@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld('launcher', {
   downloadJava: (javaVer, gameDir) => ipcRenderer.invoke('download-java', javaVer, gameDir),
 
   checkUpdate: () => ipcRenderer.invoke('check-update'),
-  downloadUpdate: (url) => ipcRenderer.invoke('download-update', url),
+  downloadUpdate: (url, sha256) => ipcRenderer.invoke('download-update', url, sha256),
   installUpdate: (installerPath) => ipcRenderer.invoke('install-update', installerPath),
 
   cacheSet: (key, value) => ipcRenderer.invoke('cache-set', key, value),

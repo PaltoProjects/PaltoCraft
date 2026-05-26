@@ -1,5 +1,6 @@
 {
-  "version": "1.0.3",
-  "url": "https://github.com/PaltoCraft/PaltoCraft/releases/download/v1.0.3/PaltoCraft-Setup-1.0.3.exe",
-  "notes": "Оптимизированные сборки с модами, реклама серверов, папки игры"
+  "version": "1.1.0",
+  "url": "https://github.com/PaltoCraft/PaltoCraft/releases/download/v1.1.0/PaltoCraft-Setup-1.1.0.exe",
+  "notes": "Security update: Electron 42, зашифрованное хранение токенов, защита от shell injection и path traversal",
+  "sha256": "632d644cad81e054e260426fb1821c0f6f9ad56e0191c36dfb73aea9a06da26c"
 }
