@@ -1,0 +1,7 @@
+{
+  "name": "request-shim",
+  "version": "2.99.0",
+  "description": "Drop-in replacement for the deprecated 'request' package using Node.js built-in https",
+  "main": "index.js",
+  "license": "MIT"
+}

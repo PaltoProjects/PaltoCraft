@@ -9,7 +9,7 @@ const Store = require('./store');
 
 const store = new Store();
 
-const CURRENT_VERSION = '1.0.3';
+const CURRENT_VERSION = '1.1.0';
 const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/PaltoCraft/PaltoCraft/main/version.json';
 
 function checkIntegrity() {
@@ -142,10 +142,17 @@ function extractZip(zipPath, destDir) {
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
     if (process.platform === 'win32') {
-      const cmd = `powershell -NoProfile -Command "Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${destDir}' -Force"`;
-      exec(cmd, { timeout: 120000 }, (err) => err ? reject(err) : resolve());
+      // execFile avoids shell — no injection via path characters.
+      // Single quotes inside PS literal strings are escaped by doubling.
+      const safeZip = zipPath.replace(/'/g, "''");
+      const safeDest = destDir.replace(/'/g, "''");
+      execFile('powershell', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        `Expand-Archive -LiteralPath '${safeZip}' -DestinationPath '${safeDest}' -Force`
+      ], { timeout: 120000 }, (err) => err ? reject(err) : resolve());
     } else {
-      exec(`tar -xzf "${zipPath}" -C "${destDir}"`, { timeout: 120000 }, (err) => err ? reject(err) : resolve());
+      execFile('tar', ['-xzf', zipPath, '-C', destDir], { timeout: 120000 },
+        (err) => err ? reject(err) : resolve());
     }
   });
 }
@@ -185,14 +192,23 @@ ipcMain.handle('check-update', async () => {
   }
 });
 
-ipcMain.handle('download-update', async (_, url) => {
-  const tmpPath = path.join(app.getPath('temp'), 'PaltoCraft-Update.exe');
+const UPDATE_INSTALLER_PATH = () => path.join(app.getPath('temp'), 'PaltoCraft-Update.exe');
+
+ipcMain.handle('download-update', async (_, url, sha256) => {
+  const tmpPath = UPDATE_INSTALLER_PATH();
   try {
     await downloadFile(url, tmpPath, (received, total) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update-progress', { received, total });
       }
     });
+    if (sha256) {
+      const fileHash = crypto.createHash('sha256').update(fs.readFileSync(tmpPath)).digest('hex');
+      if (fileHash.toLowerCase() !== sha256.toLowerCase()) {
+        fs.unlinkSync(tmpPath);
+        return { success: false, error: 'Контрольная сумма не совпадает — файл повреждён или подменён' };
+      }
+    }
     return { success: true, path: tmpPath };
   } catch (err) {
     try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch {}
@@ -201,6 +217,10 @@ ipcMain.handle('download-update', async (_, url) => {
 });
 
 ipcMain.handle('install-update', (_, installerPath) => {
+  const expected = path.resolve(UPDATE_INSTALLER_PATH());
+  if (!installerPath || path.resolve(installerPath) !== expected) {
+    return { success: false, error: 'Недопустимый путь к установщику' };
+  }
   try {
     const child = spawn(installerPath, [], { detached: true, stdio: 'ignore', windowsHide: false });
     child.unref();
@@ -345,8 +365,19 @@ ipcMain.on('window-maximize', () => {
 });
 ipcMain.on('window-close', () => mainWindow.hide());
 
-ipcMain.handle('store-get', (_, key) => store.get(key));
-ipcMain.handle('store-set', (_, key, value) => store.set(key, value));
+const SENSITIVE_KEYS = ['auth-token', 'auth-refresh', 'auth-profile'];
+
+function secureGet(key) {
+  if (SENSITIVE_KEYS.includes(key)) return store.encryptedGet(key);
+  return store.get(key);
+}
+function secureSet(key, value) {
+  if (SENSITIVE_KEYS.includes(key)) { store.encryptedSet(key, value); return; }
+  store.set(key, value);
+}
+
+ipcMain.handle('store-get', (_, key) => secureGet(key));
+ipcMain.handle('store-set', (_, key, value) => secureSet(key, value));
 ipcMain.handle('store-delete', (_, key) => store.delete(key));
 
 ipcMain.handle('get-default-gamedir', () => getDefaultGameDir());
@@ -424,9 +455,9 @@ ipcMain.handle('auth-microsoft', async () => {
     const mclcToken = mcToken.mclc();
     const profile = mcToken.profile;
 
-    store.set('auth-token', mclcToken);
-    store.set('auth-profile', profile);
-    store.set('auth-refresh', xboxManager.save()); // Microsoft refresh token
+    secureSet('auth-token', mclcToken);
+    secureSet('auth-profile', profile);
+    secureSet('auth-refresh', xboxManager.save());
 
     return { success: true, token: mclcToken, profile };
   } catch (err) {
@@ -439,13 +470,13 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
     const { Client } = require('minecraft-launcher-core');
     const launcher = new Client();
 
-    let storedToken = store.get('auth-token');
+    let storedToken = secureGet('auth-token');
     if (!storedToken) {
       return { success: false, error: 'Not authenticated' };
     }
 
     // Check if stored JWT access token is expired
-    const refreshToken = store.get('auth-refresh');
+    const refreshToken = secureGet('auth-refresh');
     let tokenExpired = false;
     try {
       const parts = (storedToken.access_token || '').split('.');
@@ -473,8 +504,8 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
         const xboxManager = await authManager.refresh(refreshToken);
         const mcToken = await xboxManager.getMinecraft();
         storedToken = mcToken.mclc();
-        store.set('auth-token', storedToken);
-        store.set('auth-refresh', xboxManager.save());
+        secureSet('auth-token', storedToken);
+        secureSet('auth-refresh', xboxManager.save());
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('launch-log', { type: 'info', msg: 'Сессия авторизации обновлена.' });
         }
@@ -521,7 +552,12 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
     };
 
     if (options.jvmArgs) {
-      launchOptions.customArgs = options.jvmArgs.split(' ').filter(Boolean);
+      const args = options.jvmArgs.split(' ').filter(Boolean);
+      const blocked = args.filter(a => /^-javaagent:/i.test(a) || /^-agentlib:/i.test(a) || /^-agentpath:/i.test(a));
+      if (blocked.length) {
+        return { success: false, error: 'Недопустимые JVM аргументы: ' + blocked.join(', ') };
+      }
+      launchOptions.customArgs = args;
     }
 
     launcher.on('debug', (e) => {
@@ -793,18 +829,28 @@ ipcMain.handle('get-servers', async () => {
   } catch { return []; }
 });
 
+function safeCacheKey(key) {
+  if (typeof key !== 'string' || key.length === 0 || key.length > 200) return null;
+  if (!/^[\w\-.]+$/.test(key)) return null;
+  return key;
+}
+
 ipcMain.handle('cache-set', (_, key, value) => {
+  const safe = safeCacheKey(key);
+  if (!safe) return false;
   try {
     const cacheDir = path.join(app.getPath('userData'), 'cache');
     if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-    fs.writeFileSync(path.join(cacheDir, key), value, 'utf8');
+    fs.writeFileSync(path.join(cacheDir, safe), value, 'utf8');
     return true;
   } catch { return false; }
 });
 
 ipcMain.handle('cache-get', (_, key) => {
+  const safe = safeCacheKey(key);
+  if (!safe) return null;
   try {
-    const filePath = path.join(app.getPath('userData'), 'cache', key);
+    const filePath = path.join(app.getPath('userData'), 'cache', safe);
     if (!fs.existsSync(filePath)) return null;
     return fs.readFileSync(filePath, 'utf8');
   } catch { return null; }
