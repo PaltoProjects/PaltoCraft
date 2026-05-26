@@ -6,12 +6,12 @@
 
 **Minecraft лаунчер с официальной авторизацией Microsoft**
 
-[![Release](https://img.shields.io/github/v/release/PaltoCraft/PaltoCraft?style=flat-square&color=5b6af5&label=Версия)](https://github.com/PaltoCraft/PaltoCraft/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/PaltoCraft/PaltoCraft/total?style=flat-square&color=22c55e&label=Скачиваний)](https://github.com/PaltoCraft/PaltoCraft/releases)
-[![License](https://img.shields.io/github/license/PaltoCraft/PaltoCraft?style=flat-square&color=7c3aed&label=Лицензия)](LICENSE)
-[![Platform](https://img.shields.io/badge/Платформа-Windows-0078d4?style=flat-square)](https://github.com/PaltoCraft/PaltoCraft/releases/latest)
+[![Release](https://img.shields.io/github/v/release/PaltoProjects/PaltoCraft?style=flat-square&color=5b6af5&label=Версия)](https://github.com/PaltoProjects/PaltoCraft/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/PaltoProjects/PaltoCraft/total?style=flat-square&color=22c55e&label=Скачиваний)](https://github.com/PaltoProjects/PaltoCraft/releases)
+[![License](https://img.shields.io/github/license/PaltoProjects/PaltoCraft?style=flat-square&color=7c3aed&label=Лицензия)](LICENSE)
+[![Platform](https://img.shields.io/badge/Платформа-Windows-0078d4?style=flat-square)](https://github.com/PaltoProjects/PaltoCraft/releases/latest)
 
-[**Скачать**](https://github.com/PaltoCraft/PaltoCraft/releases/latest) · [Сообщить об ошибке](https://github.com/PaltoCraft/PaltoCraft/issues) · [Предложить идею](https://github.com/PaltoCraft/PaltoCraft/issues) · [Сайт](https://paltocraft.github.io/PaltoCraft/#)
+[**Скачать**](https://github.com/PaltoProjects/PaltoCraft/releases/latest) · [Сообщить об ошибке](https://github.com/PaltoProjects/PaltoCraft/issues) · [Предложить идею](https://github.com/PaltoProjects/PaltoCraft/issues) · [Сайт](https://paltocraft.github.io/PaltoCraft/#)
 
 </div>
 
@@ -24,6 +24,7 @@ PaltoCraft — красивый и быстрый лаунчер Minecraft с о
 ## Возможности
 
 - **Вход через Microsoft** — официальная OAuth авторизация, лицензионный аккаунт
+- **Безопасное хранение токенов** — авторизационные данные шифруются через Windows DPAPI
 - **Все версии Minecraft** — релизы, снапшоты, бета и альфа версии
 - **Автозагрузка Java** — нужная версия JRE скачивается автоматически для каждой версии MC
 - **3D скин персонажа** — отображение скина с вращением мышью
@@ -33,7 +34,7 @@ PaltoCraft — красивый и быстрый лаунчер Minecraft с о
 
 ## Установка
 
-1. Скачай последний релиз: [**PaltoCraft-Setup.exe**](https://github.com/PaltoCraft/PaltoCraft/releases/latest)
+1. Скачай последний релиз: [**PaltoCraft-Setup.exe**](https://github.com/PaltoProjects/PaltoCraft/releases/latest)
 2. Запусти установщик
 3. Выбери папку установки, создай ярлык на рабочем столе
 4. Запусти PaltoCraft и войди через Microsoft аккаунт
