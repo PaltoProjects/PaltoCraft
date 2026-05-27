@@ -9,8 +9,46 @@ const Store = require('./store');
 
 const store = new Store();
 
-const CURRENT_VERSION = '1.1.0';
-const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/PaltoCraft/PaltoCraft/main/version.json';
+const CURRENT_VERSION = '1.1.2';
+const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/PaltoProjects/PaltoCraft/main/version.json';
+
+// ── Discord Rich Presence ─────────────────────────────────────────────────────
+let _drpc = null;
+let _drpcReady = false;
+let _drpcStartTs = null;
+
+const DISCORD_CLIENT_ID = '1508812481953402970';
+
+function initDiscordRPC() {
+  try {
+    const RPC = require('discord-rpc');
+    if (_drpc) { try { _drpc.destroy(); } catch {} }
+    _drpcReady = false;
+    _drpc = new RPC.Client({ transport: 'ipc' });
+    _drpc.on('ready', () => { _drpcReady = true; setDiscordActivity('В главном меню'); });
+    _drpc.login({ clientId: DISCORD_CLIENT_ID }).catch(() => { _drpc = null; _drpcReady = false; });
+  } catch {}
+}
+
+function setDiscordActivity(state) {
+  if (!_drpc || !_drpcReady) return;
+  try {
+    _drpc.setActivity({
+      details: 'PaltoCraft Launcher',
+      state: state || 'В главном меню',
+      startTimestamp: _drpcStartTs,
+      largeImageKey: 'paltocraft',
+      largeImageText: 'PaltoCraft — Minecraft Launcher',
+      instance: false
+    });
+  } catch {}
+}
+
+function clearDiscordActivity() {
+  if (!_drpc || !_drpcReady) return;
+  try { _drpc.clearActivity(); } catch {}
+  _drpcStartTs = null;
+}
 
 function checkIntegrity() {
   const manifestPath = path.join(__dirname, 'integrity.json');
@@ -31,7 +69,7 @@ function checkIntegrity() {
         message: 'Файлы лаунчера повреждены или изменены.\nТребуется переустановка.',
         buttons: ['Переустановить']
       });
-      shell.openExternal('https://github.com/PaltoCraft/PaltoCraft/releases/latest');
+      shell.openExternal('https://github.com/PaltoProjects/PaltoCraft/releases/latest');
       app.quit();
       return;
     }
@@ -115,13 +153,18 @@ function downloadFile(url, destPath, onProgress) {
     const file = fs.createWriteStream(destPath);
     const lib = url.startsWith('https') ? https : http;
 
+    const cleanup = (err) => {
+      file.destroy();
+      try { fs.unlinkSync(destPath); } catch {}
+      reject(err);
+    };
+
     const request = (u) => lib.get(u, { headers: { 'User-Agent': 'PaltoCraft/1.0' } }, (res) => {
       if ([301, 302, 307, 308].includes(res.statusCode)) {
         return request(res.headers.location);
       }
       if (res.statusCode !== 200) {
-        file.destroy();
-        return reject(new Error(`HTTP ${res.statusCode}`));
+        return cleanup(new Error(`HTTP ${res.statusCode}`));
       }
       const total = parseInt(res.headers['content-length'] || '0', 10);
       let received = 0;
@@ -131,10 +174,10 @@ function downloadFile(url, destPath, onProgress) {
         if (total && onProgress) onProgress(received, total);
       });
       res.on('end', () => { file.end(); resolve(); });
-      res.on('error', reject);
+      res.on('error', cleanup);
     });
     request(url);
-    file.on('error', reject);
+    file.on('error', cleanup);
   });
 }
 
@@ -322,8 +365,8 @@ function createTray() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 620,
+    width: 1280,
+    height: 780,
     minWidth: 900,
     minHeight: 560,
     frame: false,
@@ -338,6 +381,7 @@ function createWindow() {
   });
 
   mainWindow.loadFile('index.html');
+  mainWindow.maximize();
   mainWindow.setMenuBarVisibility(false);
 
   // Hide to tray instead of closing when X is clicked
@@ -353,6 +397,7 @@ app.whenReady().then(() => {
   try { checkIntegrity(); } catch {}
   createWindow();
   createTray();
+  try { initDiscordRPC(); } catch {}
 });
 
 app.on('before-quit', () => { isQuitting = true; });
@@ -532,9 +577,31 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
       ? { number: options.version, type: options.versionType || 'release', custom: options.customVersion }
       : { number: options.version, type: options.versionType || 'release' };
 
+    const sharedDir = (options.sharedDir && options.sharedDir.trim())
+      ? path.resolve(options.sharedDir)
+      : getDefaultGameDir();
+
+    if (!fs.existsSync(sharedDir)) {
+      fs.mkdirSync(sharedDir, { recursive: true });
+    }
+
+    // Build mirror URL overrides — replace Mojang CDN with user-selected mirror
+    const urlOverrides = {};
+    if (options.assetMirror) {
+      urlOverrides.resource = options.assetMirror; // overrides resources.download.minecraft.net
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('launch-log', {
+        type: 'info',
+        msg: `Зеркало ассетов: ${options.assetMirror ? options.assetMirror : 'Mojang (официальное)'}`
+      });
+    }
+
     const launchOptions = {
       authorization: storedToken,
-      root: gameDir,
+      // root — путь к .minecraft (где MCLC хранит versions/, libraries/)
+      // для мод-профилей это sharedDir, для ваниллы gameDir === sharedDir
+      root: sharedDir,
       version: versionBlock,
       memory: {
         max: `${options.maxRam || 4}G`,
@@ -542,7 +609,14 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
       },
       javaPath: options.javaPath || 'java',
       overrides: {
-        detached: false
+        detached: false,
+        cwd: sharedDir,
+        assetRoot: path.join(sharedDir, 'assets'),
+        libraryRoot: path.join(sharedDir, 'libraries'),
+        // gameDirectory задаёт --gameDir для Minecraft (моды, конфиги, сохранения)
+        // для мод-профилей это папка инстанса; для ванилла-запуска gameDir === sharedDir
+        ...(gameDir !== sharedDir ? { gameDirectory: gameDir } : {}),
+        ...(Object.keys(urlOverrides).length ? { url: urlOverrides } : {})
       },
       window: {
         width: options.winWidth || 854,
@@ -566,9 +640,15 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
       }
     });
     launcher.on('data', (e) => {
+      const msg = String(e);
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('launch-log', { type: 'data', msg: String(e) });
+        mainWindow.webContents.send('launch-log', { type: 'data', msg });
       }
+      // Discord RPC — detect server / singleplayer from game log
+      const srvMatch = msg.match(/Connecting to (.+?), \d+/i);
+      if (srvMatch) { setDiscordActivity(`Играет на ${srvMatch[1]}`); }
+      else if (/Saving and quitting world|Leaving level/i.test(msg)) { setDiscordActivity('В главном меню'); }
+      else if (/Loading level|Preparing level/i.test(msg)) { setDiscordActivity('Играет в одиночную'); }
     });
     launcher.on('progress', (e) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -577,6 +657,7 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
     });
     launcher.on('close', (code) => {
       activeGameProcess = null;
+      clearDiscordActivity();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('launch-close', code);
         if (options.hideLauncher) mainWindow.show();
@@ -584,6 +665,8 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
     });
 
     activeGameProcess = await launcher.launch(launchOptions);
+    _drpcStartTs = new Date();
+    setDiscordActivity('Загружает Minecraft...');
 
     if (options.closeLauncher) {
       mainWindow.close();
@@ -596,6 +679,45 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
     return { success: false, error: err.message };
   }
+});
+
+ipcMain.handle('read-crash-log', async (_, gameDir, launchTime) => {
+  const dir = gameDir || getDefaultGameDir();
+  let text = null;
+
+  try {
+    const crashDir = path.join(dir, 'crash-reports');
+    if (fs.existsSync(crashDir)) {
+      const files = fs.readdirSync(crashDir)
+        .filter(f => f.endsWith('.txt'))
+        .map(f => ({ name: f, mtime: fs.statSync(path.join(crashDir, f)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime);
+      if (files.length > 0 && (!launchTime || files[0].mtime >= launchTime - 5000)) {
+        const content = fs.readFileSync(path.join(crashDir, files[0].name), 'utf-8');
+        text = content.split('\n').slice(0, 60).join('\n').trim();
+      }
+    }
+  } catch {}
+
+  if (!text) {
+    try {
+      const logPath = path.join(dir, 'logs', 'latest.log');
+      if (fs.existsSync(logPath)) {
+        const content = fs.readFileSync(logPath, 'utf-8');
+        const lines = content.split('\n');
+        const relevant = [];
+        for (let i = 0; i < lines.length; i++) {
+          if (/Exception in thread|Caused by:|A fatal error|FATAL\]|ERROR\].*(?:Exception|Error:)/i.test(lines[i])) {
+            relevant.push(...lines.slice(i, Math.min(i + 35, lines.length)));
+            break;
+          }
+        }
+        text = (relevant.length > 0 ? relevant : lines.slice(-25)).join('\n').trim();
+      }
+    } catch {}
+  }
+
+  return { text: text || 'Лог недоступен.' };
 });
 
 ipcMain.handle('get-skin-data', async (_, uuidOrUrl) => {
@@ -715,11 +837,42 @@ ipcMain.handle('install-forge', async (_, mcVersion, gameDir) => {
     });
     send({ stage: 'installing-forge', ver: mcVersion });
     const dir = gameDir || getDefaultGameDir();
-    const javaExe = findJavaExe(getJavaDir(dir, 17)) || 'java';
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const lpPath = path.join(dir, 'launcher_profiles.json');
+    if (!fs.existsSync(lpPath)) {
+      fs.writeFileSync(lpPath, JSON.stringify({ profiles: {}, settings: {}, version: 3 }), 'utf8');
+    }
+    const mcMinor = parseInt((mcVersion.split('.')[1]) || '0');
+    const javaVerForForge = mcMinor >= 17 ? 17 : (mcMinor >= 16 ? 11 : 8);
+    const javaExe = findJavaExe(getJavaDir(dir, javaVerForForge))
+                 || findJavaExe(getJavaDir(dir, 17))
+                 || findJavaExe(getJavaDir(dir, 8))
+                 || 'java';
     await new Promise((resolve, reject) => {
-      const child = spawn(javaExe, ['-jar', tmpPath, '--installClient'], { stdio: 'ignore', windowsHide: true });
-      child.on('close', (code) => { code === 0 ? resolve() : reject(new Error('Forge installer завершился с кодом ' + code)); });
-      child.on('error', reject);
+      let out = '';
+      const child = spawn(javaExe, ['-jar', tmpPath, '--installClient'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+        cwd: dir
+      });
+      const timeout = setTimeout(() => {
+        child.kill();
+        reject(new Error('Forge installer завис (таймаут 5 мин). Проблема с доступом к серверам Mojang/Forge.'));
+      }, 5 * 60 * 1000);
+      const onData = (d) => {
+        const line = d.toString();
+        out += line;
+        line.split('\n').filter(l => l.trim()).forEach(l => send({ stage: 'forge-log', line: l.trim() }));
+      };
+      child.stdout.on('data', onData);
+      child.stderr.on('data', onData);
+      child.on('close', (code) => {
+        clearTimeout(timeout);
+        if (code === 0) return resolve();
+        const tail = out.trim().slice(-600);
+        reject(new Error(`Forge installer завершился с кодом ${code} (java: ${javaExe})\n${tail}`));
+      });
+      child.on('error', (e) => { clearTimeout(timeout); reject(new Error(`Не удалось запустить Java: ${e.message} (путь: ${javaExe})`)); });
     });
     try { fs.unlinkSync(tmpPath); } catch {}
     send({ stage: 'done', ver: mcVersion });
@@ -759,11 +912,34 @@ ipcMain.handle('install-neoforge', async (_, mcVersion, gameDir) => {
     });
     send({ stage: 'installing-neoforge', ver: mcVersion });
     const dir = gameDir || getDefaultGameDir();
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const lpPathNeo = path.join(dir, 'launcher_profiles.json');
+    if (!fs.existsSync(lpPathNeo)) {
+      fs.writeFileSync(lpPathNeo, JSON.stringify({ profiles: {}, settings: {}, version: 3 }), 'utf8');
+    }
     const javaExe = findJavaExe(getJavaDir(dir, 21)) || 'java';
     await new Promise((resolve, reject) => {
-      const child = spawn(javaExe, ['-jar', tmpPath, '--installClient'], { stdio: 'ignore', windowsHide: true });
-      child.on('close', (code) => { code === 0 ? resolve() : reject(new Error('NeoForge installer завершился с кодом ' + code)); });
-      child.on('error', reject);
+      let out = '';
+      const child = spawn(javaExe, ['-jar', tmpPath, '--installClient'], {
+        stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, cwd: dir
+      });
+      const timeout = setTimeout(() => {
+        child.kill();
+        reject(new Error('NeoForge installer завис (таймаут 5 мин). Проблема с доступом к серверам Mojang/NeoForge.'));
+      }, 5 * 60 * 1000);
+      const onData = (d) => {
+        const line = d.toString();
+        out += line;
+        line.split('\n').filter(l => l.trim()).forEach(l => send({ stage: 'neoforge-log', line: l.trim() }));
+      };
+      child.stdout.on('data', onData);
+      child.stderr.on('data', onData);
+      child.on('close', (code) => {
+        clearTimeout(timeout);
+        if (code === 0) return resolve();
+        reject(new Error(`NeoForge installer завершился с кодом ${code} (java: ${javaExe})\n${out.trim().slice(-600)}`));
+      });
+      child.on('error', (e) => { clearTimeout(timeout); reject(new Error(`Не удалось запустить Java: ${e.message} (путь: ${javaExe})`)); });
     });
     try { fs.unlinkSync(tmpPath); } catch {}
     send({ stage: 'done', ver: mcVersion });
@@ -823,7 +999,7 @@ ipcMain.handle('check-admin', (_, uuid) => {
 
 ipcMain.handle('get-servers', async () => {
   try {
-    const url = 'https://raw.githubusercontent.com/' + 'PaltoCraft/PaltoCraft/main/servers.json';
+    const url = 'https://raw.githubusercontent.com/PaltoProjects/PaltoCraft/main/servers.json';
     const json = await fetchJson(url);
     return Array.isArray(json) ? json : [];
   } catch { return []; }
@@ -881,4 +1057,186 @@ ipcMain.handle('get-versions', async () => {
   } catch (err) {
     return { success: false, error: err.message };
   }
+});
+
+// ── Mod Profile Management ────────────────────────────────────────────────────
+function getModProfilesPath() {
+  return path.join(app.getPath('userData'), 'mod-profiles.json');
+}
+
+function loadModProfiles() {
+  const f = getModProfilesPath();
+  if (!fs.existsSync(f)) return [];
+  try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return []; }
+}
+
+function saveModProfiles(profiles) {
+  fs.writeFileSync(getModProfilesPath(), JSON.stringify(profiles, null, 2));
+}
+
+function getProfileInstanceDir(profile) {
+  if (profile.gameDir) return profile.gameDir;
+  return path.join(app.getPath('userData'), 'instances', profile.id);
+}
+
+ipcMain.handle('mod-profiles-list', () => loadModProfiles());
+
+ipcMain.handle('mod-profile-save', (_, profile) => {
+  try {
+    const profiles = loadModProfiles();
+    const idx = profiles.findIndex(p => p.id === profile.id);
+    if (idx >= 0) profiles[idx] = profile; else profiles.push(profile);
+    saveModProfiles(profiles);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('mod-profile-delete', (_, profileId) => {
+  try {
+    saveModProfiles(loadModProfiles().filter(p => p.id !== profileId));
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('mod-profile-gamedir', (_, profileId) => {
+  const profile = loadModProfiles().find(p => p.id === profileId);
+  return profile ? getProfileInstanceDir(profile) : null;
+});
+
+ipcMain.handle('modrinth-search', async (_, query, mcVersion, loader, offset) => {
+  try {
+    const facets = [['project_type:mod']];
+    if (loader && loader !== 'vanilla') facets.push([`categories:${loader}`]);
+    if (mcVersion) facets.push([`versions:${mcVersion}`]);
+    const url = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(query || '')}&facets=${encodeURIComponent(JSON.stringify(facets))}&limit=20&offset=${offset || 0}&index=relevance`;
+    const result = await fetchJson(url);
+    return { success: true, hits: result.hits || [], totalHits: result.total_hits || 0 };
+  } catch (err) { return { success: false, error: err.message, hits: [] }; }
+});
+
+// ── Modrinth installed-mods map (projectId → filename) ───────────────────────
+function getModrinthMapPath(profile) {
+  return path.join(getProfileInstanceDir(profile), 'mods', '.modrinth.json');
+}
+function readModrinthMap(profile) {
+  const p = getModrinthMapPath(profile);
+  if (!fs.existsSync(p)) return {};
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return {}; }
+}
+function saveModrinthMap(profile, map) {
+  const modsDir = path.join(getProfileInstanceDir(profile), 'mods');
+  if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
+  fs.writeFileSync(getModrinthMapPath(profile), JSON.stringify(map, null, 2));
+}
+
+ipcMain.handle('modrinth-installed-ids', (_, profileId) => {
+  const profile = loadModProfiles().find(p => p.id === profileId);
+  if (!profile) return {};
+  const map = readModrinthMap(profile);
+  // Verify files still exist; clean up stale entries
+  const modsDir = path.join(getProfileInstanceDir(profile), 'mods');
+  let changed = false;
+  for (const [pid, fname] of Object.entries(map)) {
+    const base = path.basename(fname);
+    const exists = fs.existsSync(path.join(modsDir, base)) ||
+                   fs.existsSync(path.join(modsDir, base + '.disabled'));
+    if (!exists) { delete map[pid]; changed = true; }
+  }
+  if (changed) saveModrinthMap(profile, map);
+  return map; // { projectId: filename }
+});
+
+ipcMain.handle('modrinth-install-mod', async (_, profileId, projectId) => {
+  const send = (data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-dl-progress', data); };
+  try {
+    const profile = loadModProfiles().find(p => p.id === profileId);
+    if (!profile) return { success: false, error: 'Профиль не найден' };
+
+    let url = `https://api.modrinth.com/v2/project/${projectId}/version?game_versions=${encodeURIComponent(JSON.stringify([profile.mcVersion]))}`;
+    if (profile.loader && profile.loader !== 'vanilla') {
+      url += `&loaders=${encodeURIComponent(JSON.stringify([profile.loader]))}`;
+    }
+    send({ stage: 'fetch-versions', projectId });
+    const versions = await fetchJson(url);
+    if (!versions || !versions.length) return { success: false, notFound: true };
+
+    const file = versions[0].files.find(f => f.primary) || versions[0].files[0];
+    if (!file) return { success: false, error: 'Файл мода не найден' };
+
+    const modsDir = path.join(getProfileInstanceDir(profile), 'mods');
+    if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
+
+    const dest = path.join(modsDir, file.filename);
+    if (fs.existsSync(dest)) {
+      // Already on disk — ensure mapping is saved
+      const map = readModrinthMap(profile);
+      if (!map[projectId]) { map[projectId] = file.filename; saveModrinthMap(profile, map); }
+      return { success: true, skipped: true, filename: file.filename };
+    }
+
+    send({ stage: 'downloading', filename: file.filename });
+    await downloadFile(file.url, dest, (received, total) => {
+      send({ stage: 'progress', received, total });
+    });
+
+    // Save projectId → filename mapping
+    const map = readModrinthMap(profile);
+    map[projectId] = file.filename;
+    saveModrinthMap(profile, map);
+
+    return { success: true, skipped: false, filename: file.filename };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('mod-list-installed', (_, profileId) => {
+  try {
+    const profile = loadModProfiles().find(p => p.id === profileId);
+    if (!profile) return { success: false, error: 'Профиль не найден' };
+    const modsDir = path.join(getProfileInstanceDir(profile), 'mods');
+    if (!fs.existsSync(modsDir)) return { success: true, mods: [] };
+    const mods = fs.readdirSync(modsDir)
+      .filter(f => f.endsWith('.jar') || f.endsWith('.jar.disabled'))
+      .sort()
+      .map(filename => ({
+        filename,
+        enabled: filename.endsWith('.jar'),
+        displayName: filename.replace(/\.jar(\.disabled)?$/, '').replace(/-[\d.+\-mc]+[\d.]*$/, '').replace(/[-_]/g, ' ').trim()
+      }));
+    return { success: true, mods };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('mod-toggle', (_, profileId, filename) => {
+  try {
+    const profile = loadModProfiles().find(p => p.id === profileId);
+    if (!profile) return { success: false, error: 'Профиль не найден' };
+    const safe = path.basename(filename);
+    if (!safe.endsWith('.jar') && !safe.endsWith('.jar.disabled')) return { success: false, error: 'Invalid file' };
+    const modsDir = path.join(getProfileInstanceDir(profile), 'mods');
+    const toName = safe.endsWith('.jar') ? safe + '.disabled' : safe.replace(/\.disabled$/, '');
+    fs.renameSync(path.join(modsDir, safe), path.join(modsDir, toName));
+    return { success: true, newFilename: toName };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('mod-delete-file', (_, profileId, filename) => {
+  try {
+    const profile = loadModProfiles().find(p => p.id === profileId);
+    if (!profile) return { success: false, error: 'Профиль не найден' };
+    const safe = path.basename(filename);
+    const modsDir = path.join(getProfileInstanceDir(profile), 'mods');
+    const filePath = path.join(modsDir, safe);
+    if (!path.resolve(filePath).startsWith(path.resolve(modsDir) + path.sep)) return { success: false, error: 'Invalid path' };
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    // Remove from Modrinth mapping if present
+    const map = readModrinthMap(profile);
+    const baseNoDisabled = safe.replace(/\.disabled$/, '');
+    for (const [pid, fname] of Object.entries(map)) {
+      if (path.basename(fname) === baseNoDisabled || path.basename(fname) === safe) {
+        delete map[pid];
+      }
+    }
+    saveModrinthMap(profile, map);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
 });

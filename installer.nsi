@@ -11,9 +11,9 @@ Unicode True
 ;--------------------------------
 ; Настройки приложения
 !define APP_NAME        "PaltoCraft"
-!define APP_VERSION     "1.0.3"
+!define APP_VERSION     "1.1.2"
 !define APP_PUBLISHER   "PaltoCraft"
-!define APP_URL         "https://github.com/PaltoCraft/PaltoCraft"
+!define APP_URL         "https://github.com/PaltoProjects/PaltoCraft"
 !define APP_EXE         "PaltoCraft.exe"
 !define APP_DIR         "dist\PaltoCraft-win32-x64"
 !define REG_KEY         "Software\Microsoft\Windows\CurrentVersion\Uninstall\PaltoCraft"
@@ -21,7 +21,7 @@ Unicode True
 ;--------------------------------
 ; Основные настройки
 Name "${APP_NAME} ${APP_VERSION}"
-OutFile "dist\installer\PaltoCraft-Setup-${APP_VERSION}.exe"
+OutFile "dist\PaltoCraft-Setup-${APP_VERSION}.exe"
 InstallDir "$APPDATA\${APP_NAME}"
 InstallDirRegKey HKCU "${REG_KEY}" "InstallLocation"
 RequestExecutionLevel user

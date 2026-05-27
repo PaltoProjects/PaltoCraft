@@ -107,16 +107,7 @@ function copyFiles() {
 
 function copyDir(src, dst) {
   if (!fs.existsSync(src)) return;
-  fs.mkdirSync(dst, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const s = path.join(src, entry.name);
-    const d = path.join(dst, entry.name);
-    if (entry.isDirectory()) {
-      copyDir(s, d);
-    } else {
-      fs.copyFileSync(s, d);
-    }
-  }
+  fs.cpSync(src, dst, { recursive: true, dereference: true, force: true });
 }
 
 function copyDirs() {
@@ -152,7 +143,7 @@ function package_() {
     '--arch=x64',
     '--out=dist',
     '--overwrite',
-    '--app-version=1.1.0',
+    '--app-version=1.1.2',
     '--icon=assets/icon.ico',
     '--no-asar',
     '--prune'
@@ -168,12 +159,12 @@ function buildInstaller() {
     'powershell -Command "& \'C:\\Program Files (x86)\\NSIS\\makensis.exe\' /INPUTCHARSET UTF8 \'installer.nsi\'"',
     { stdio: 'inherit', cwd: SRC_DIR }
   );
-  console.log('✓ Installer: dist/installer/PaltoCraft-Setup-1.1.0.exe');
+  console.log('✓ Installer: dist/PaltoCraft-Setup-1.1.2.exe');
 }
 
 function packInstaller() {
   const upx = 'C:\\upx\\upx.exe';
-  const exe = path.join(SRC_DIR, 'dist', 'installer', 'PaltoCraft-Setup-1.1.0.exe');
+  const exe = path.join(SRC_DIR, 'dist', 'PaltoCraft-Setup-1.1.2.exe');
   if (!fs.existsSync(upx)) { console.log('⚠ UPX не найден — пропускаем упаковку'); return; }
   if (!fs.existsSync(exe)) { console.log('⚠ Installer не найден — пропускаем UPX'); return; }
   console.log('\n📦 Packing installer with UPX...');

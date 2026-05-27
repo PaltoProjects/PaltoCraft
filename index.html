@@ -24,7 +24,7 @@
       <div class="update-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       </div>
-      <h2 class="update-heading">Доступно новое обновление</h2>
+      <h2 class="update-heading" data-i18n="update.title">Доступно новое обновление</h2>
       <div class="update-version-badge" id="update-version-label"></div>
       <p class="update-notes" id="update-notes"></p>
       <div class="update-progress-wrap" id="update-progress-wrap" style="display:none">
@@ -33,7 +33,38 @@
         </div>
         <span class="update-progress-label" id="update-progress-label">0%</span>
       </div>
-      <button class="btn btn-update" id="btn-update">Обновить</button>
+      <button class="btn btn-update" id="btn-update" data-i18n="update.btn">Обновить</button>
+    </div>
+  </div>
+
+  <div class="crash-overlay" id="crash-overlay" style="display:none">
+    <div class="crash-card">
+      <div class="crash-bug">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="56" height="56">
+          <ellipse cx="12" cy="12" rx="4" ry="5.5"/>
+          <path d="M12 6.5V4m0 15.5V19"/>
+          <path d="M8 12H3m18 0h-5"/>
+          <path d="M8.5 8 5.5 5m13 0-3 3"/>
+          <path d="M8.5 16 5.5 19m13 0-3-3"/>
+        </svg>
+      </div>
+      <h2 class="crash-title" data-i18n="crash.title">Упс! Что-то сломалось</h2>
+      <pre class="crash-log" id="crash-log-text"></pre>
+      <div class="crash-actions">
+        <button class="btn btn-sm" id="btn-crash-close" data-i18n="crash.close">Закрыть</button>
+        <button class="btn btn-primary" id="btn-crash-copy" data-i18n="crash.copy">Скопировать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom confirm dialog -->
+  <div class="confirm-overlay" id="confirm-overlay" style="display:none">
+    <div class="confirm-card">
+      <p class="confirm-msg" id="confirm-msg"></p>
+      <div class="confirm-actions">
+        <button class="btn btn-sm" id="confirm-cancel">Отмена</button>
+        <button class="btn-confirm-ok" id="confirm-ok">Удалить</button>
+      </div>
     </div>
   </div>
 
@@ -42,23 +73,33 @@
       <div class="nav-items">
         <button class="nav-item active" data-page="home">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          <span>Главная</span>
+          <span data-i18n="nav.home">Главная</span>
         </button>
         <button class="nav-item" data-page="settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
-          <span>Настройки</span>
+          <span data-i18n="nav.settings">Настройки</span>
+        </button>
+        <button class="nav-item" data-page="mods" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          <span data-i18n="nav.mods">Моды</span>
         </button>
         <button class="nav-item" data-page="console">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-          <span>Консоль</span>
+          <span data-i18n="nav.console">Консоль</span>
+        </button>
+        <button class="nav-item nav-item--bottom" data-page="servers">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="5" rx="1"/><rect x="2" y="10" width="20" height="5" rx="1"/><rect x="2" y="17" width="20" height="5" rx="1"/><circle cx="18" cy="5.5" r="1" fill="currentColor" stroke="none"/><circle cx="18" cy="12.5" r="1" fill="currentColor" stroke="none"/><circle cx="18" cy="19.5" r="1" fill="currentColor" stroke="none"/></svg>
+          <span data-i18n="nav.servers">Серверы</span>
         </button>
       </div>
 
-      <div class="sidebar-profile" id="sidebar-profile">
-        <div class="profile-avatar" id="profile-avatar">?</div>
-        <div class="profile-info">
-          <span class="profile-name" id="profile-name">Не авторизован</span>
-          <span class="profile-status" id="profile-status">Войдите в аккаунт</span>
+      <div class="sidebar-bottom">
+        <div class="sidebar-profile" id="sidebar-profile">
+          <div class="profile-avatar" id="profile-avatar">?</div>
+          <div class="profile-info">
+            <span class="profile-name" id="profile-name">Не авторизован</span>
+            <span class="profile-status" id="profile-status">Войдите в аккаунт</span>
+          </div>
         </div>
       </div>
     </nav>
@@ -71,7 +112,7 @@
           <div class="hero-particles" id="particles"></div>
           <div class="hero-content">
             <h1 class="hero-title">PaltoCraft</h1>
-            <p class="hero-subtitle">Официальный лаунчер с лицензией</p>
+            <p class="hero-subtitle" data-i18n="hero.subtitle">Официальный лаунчер с лицензией</p>
           </div>
         </div>
 
@@ -83,11 +124,11 @@
                 <circle cx="12" cy="7" r="4"/>
               </svg>
             </div>
-            <h2>Войти в Microsoft</h2>
-            <p class="panel-desc">Используйте лицензионный аккаунт Minecraft для входа</p>
+            <h2 data-i18n="auth.title">Войти в Microsoft</h2>
+            <p class="panel-desc" data-i18n="auth.desc">Используйте лицензионный аккаунт Minecraft для входа</p>
             <button class="btn btn-microsoft" id="btn-login">
               <svg viewBox="0 0 21 21" width="20" height="20"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
-              Войти через Microsoft
+              <span data-i18n="auth.btn">Войти через Microsoft</span>
             </button>
           </div>
 
@@ -101,20 +142,20 @@
                 <div class="launch-avatar" id="launch-avatar"></div>
                 <div class="launch-user-info">
                   <span class="launch-username" id="launch-username">Player</span>
-                  <span class="launch-tag">Лицензия ✓</span>
+                  <span class="launch-tag" data-i18n="launch.tag">Лицензия ✓</span>
                 </div>
-                <button class="btn-logout" id="btn-logout">Выйти</button>
+                <button class="btn-logout" id="btn-logout" data-i18n="launch.logout">Выйти</button>
               </div>
 
               <div class="version-select-row">
                 <div class="version-filters">
-                  <button class="filter-btn active" data-filter="release">Релизы</button>
-                  <button class="filter-btn" data-filter="snapshot">Снапшоты</button>
+                  <button class="filter-btn active" data-filter="release" data-i18n="filter.release">Релизы</button>
+                  <button class="filter-btn" data-filter="snapshot" data-i18n="filter.snapshot">Снапшоты</button>
                   <button class="filter-btn" data-filter="old_beta">Beta</button>
                   <button class="filter-btn" data-filter="old_alpha">Alpha</button>
-                  <button class="filter-btn" data-filter="all">Все</button>
+                  <button class="filter-btn" data-filter="all" data-i18n="filter.all">Все</button>
                   <button class="filter-btn" data-filter="optimized">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" style="vertical-align:middle;margin-right:4px"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Оптимизированные
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" style="vertical-align:middle;margin-right:4px"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><span data-i18n="filter.optimized">Оптимизированные</span>
                   </button>
                 </div>
                 <div class="loader-row" id="loader-row" style="display:none"></div>
@@ -127,10 +168,10 @@
 
               <div class="progress-wrap" id="progress-wrap" style="display:none">
                 <div class="progress-top">
-                  <div class="progress-label" id="progress-label">Загрузка...</div>
+                  <div class="progress-label" id="progress-label" data-i18n="common.loading">Загрузка...</div>
                   <button class="btn-stop" id="btn-stop" title="Остановить">
                     <svg viewBox="0 0 24 24" fill="currentColor" width="11" height="11"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-                    Остановить
+                    <span data-i18n="launch.stop">Остановить</span>
                   </button>
                 </div>
                 <div class="progress-bar">
@@ -141,85 +182,87 @@
               <div class="launch-btn-row">
                 <button class="btn btn-launch" id="btn-launch">
                   <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                  Играть
+                  <span data-i18n="launch.play">Играть</span>
                 </button>
                 <button class="btn-launch-arrow" id="btn-launch-arrow" title="Дополнительно">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
-              </div>
-              <div class="launch-dropdown" id="launch-dropdown" style="display:none">
+                <div class="launch-dropdown" id="launch-dropdown" style="display:none">
                 <button class="launch-drop-item" id="btn-open-gamedir">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                  Корневая папка игры
+                  <span data-i18n="launch.gameDir">Корневая папка игры</span>
                 </button>
                 <button class="launch-drop-item" id="btn-open-modsdir">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                  Папка с модами
+                  <span data-i18n="launch.modsDir">Папка с модами</span>
                 </button>
               </div>
             </div>
           </div>
-        </div>
-
-        <div class="servers-bar" id="servers-bar" style="display:none">
-          <span class="servers-bar-label">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            Серверы
-          </span>
-          <div class="servers-list" id="servers-list"></div>
         </div>
       </section>
 
       <section class="page" id="page-settings">
         <div class="page-header">
-          <h2>Настройки</h2>
+          <h2 data-i18n="nav.settings">Настройки</h2>
         </div>
         <div class="settings-grid">
 
           <div class="settings-card">
-            <h3>Память</h3>
+            <h3 data-i18n="settings.memory">Память</h3>
             <div class="setting-row">
-              <label>Минимум RAM (GB)</label>
+              <label data-i18n="settings.minRam">Минимум RAM (GB)</label>
               <input type="number" class="input" id="set-min-ram" value="2" min="1" max="32">
             </div>
             <div class="setting-row">
-              <label>Максимум RAM (GB)</label>
+              <label data-i18n="settings.maxRam">Максимум RAM (GB)</label>
               <input type="number" class="input" id="set-max-ram" value="4" min="2" max="64">
             </div>
           </div>
 
           <div class="settings-card">
-            <h3>Директория игры</h3>
+            <h3 data-i18n="settings.gameDir">Директория игры</h3>
             <div class="setting-row">
-              <label>Папка .minecraft</label>
+              <label data-i18n="settings.gameDirLabel">.minecraft папка</label>
               <div class="input-with-btn">
-                <input type="text" class="input" id="set-game-dir" placeholder="Авто">
-                <button class="btn btn-sm" id="btn-pick-dir">Обзор</button>
+                <input type="text" class="input" id="set-game-dir" data-i18n-placeholder="settings.gameDirPh">
+                <button class="btn btn-sm" id="btn-pick-dir" data-i18n="settings.browse">Обзор</button>
               </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h3 data-i18n="settings.network">Сеть</h3>
+            <div class="setting-row">
+              <label data-i18n="settings.mirror">Зеркало ассетов</label>
+              <select class="input" id="set-asset-mirror">
+                <option value="" data-i18n="settings.mirrorMojang">Mojang (официальное)</option>
+                <option value="https://bmclapi2.bangbang93.com/assets" data-i18n="settings.mirrorBmcl">BMCLAPI (для России/Китая)</option>
+              </select>
             </div>
           </div>
 
           <div class="settings-card">
             <h3>Java</h3>
             <div class="setting-row">
-              <label>Путь к Java (пусто = авто)</label>
+              <label data-i18n="settings.javaPath">Путь к Java (пусто = авто)</label>
               <input type="text" class="input" id="set-java-path" placeholder="java">
             </div>
             <div class="setting-row">
-              <label>Дополнительные JVM аргументы</label>
+              <label data-i18n="settings.jvmArgs">Доп. JVM аргументы</label>
               <input type="text" class="input" id="set-jvm-args" placeholder="-XX:+UseG1GC -XX:MaxGCPauseMillis=50">
             </div>
           </div>
 
           <div class="settings-card">
-            <h3>Окно игры</h3>
+            <h3 data-i18n="settings.window">Окно игры</h3>
             <div class="setting-row two-col">
               <div>
-                <label>Ширина (px)</label>
+                <label data-i18n="settings.width">Ширина (px)</label>
                 <input type="number" class="input" id="set-win-width" value="854" min="640">
               </div>
               <div>
-                <label>Высота (px)</label>
+                <label data-i18n="settings.height">Высота (px)</label>
                 <input type="number" class="input" id="set-win-height" value="480" min="480">
               </div>
             </div>
@@ -227,55 +270,202 @@
               <label class="toggle-label">
                 <input type="checkbox" id="set-fullscreen">
                 <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                Полноэкранный режим
+                <span data-i18n="settings.fullscreen">Полноэкранный режим</span>
               </label>
             </div>
           </div>
 
           <div class="settings-card">
-            <h3>Поведение</h3>
+            <h3 data-i18n="settings.behavior">Поведение</h3>
             <div class="setting-row">
               <label class="toggle-label">
                 <input type="checkbox" id="set-hide-launcher">
                 <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                Скрывать лаунчер во время игры
+                <span data-i18n="settings.hideLauncher">Скрывать лаунчер во время игры</span>
               </label>
             </div>
             <div class="setting-row">
               <label class="toggle-label">
                 <input type="checkbox" id="set-close-launcher">
                 <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                Закрывать лаунчер при запуске игры
+                <span data-i18n="settings.closeLauncher">Закрывать лаунчер при запуске игры</span>
               </label>
             </div>
           </div>
 
           <div class="settings-card">
-            <h3>О лаунчере</h3>
+            <h3 data-i18n="settings.language">Язык / Language</h3>
+            <div class="setting-row">
+              <div class="lang-switcher">
+                <button class="lang-btn active" data-lang="ru">🇷🇺 Русский</button>
+                <button class="lang-btn" data-lang="en">🇺🇸 English</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h3 data-i18n="settings.about">О лаунчере</h3>
             <div class="about-info">
               <div class="about-logo">
                 <img src="assets/creeper.svg" width="36" height="36" alt="">
                 <span>PaltoCraft</span>
               </div>
-              <p class="about-ver">Версия 1.0.3</p>
-              <p class="about-desc">Лаунчер Minecraft с официальной авторизацией Microsoft. Поддерживает все версии игры.</p>
+              <p class="about-ver" data-i18n="settings.version">Версия 1.1.2</p>
+              <p class="about-desc" data-i18n="settings.aboutDesc">Лаунчер Minecraft с официальной авторизацией Microsoft.</p>
             </div>
           </div>
 
           <div class="settings-card full">
-            <button class="btn btn-primary" id="btn-save-settings">Сохранить настройки</button>
-            <button class="btn btn-sm" id="btn-reset-settings">Сбросить</button>
+            <button class="btn btn-primary" id="btn-save-settings" data-i18n="settings.save">Сохранить настройки</button>
+            <button class="btn btn-sm" id="btn-reset-settings" data-i18n="settings.reset">Сбросить</button>
             <span class="save-msg" id="save-msg"></span>
           </div>
         </div>
       </section>
 
+      <!-- ── Mods Page ── -->
+      <section class="page" id="page-mods">
+        <div class="mods-layout">
+          <div class="mods-sidebar">
+            <div class="mods-sidebar-hdr">
+              <span class="mods-sidebar-title" data-i18n="mods.profiles">Профили</span>
+              <button class="btn-icon" id="btn-new-profile" title="Создать профиль">+</button>
+            </div>
+            <div class="mods-profile-list" id="mods-profile-list">
+              <div class="mods-no-profiles">Нет профилей</div>
+            </div>
+          </div>
+
+          <div class="mods-main" id="mods-main">
+            <div class="mods-empty-state" id="mods-empty-state">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="color:var(--muted);opacity:.4"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+              <p><span data-i18n="mods.emptyTitle">Выберите профиль или создайте новый</span><br><span style="font-size:11px" data-i18n="mods.emptyDesc">Каждый профиль — отдельная версия MC с набором модов</span></p>
+            </div>
+
+            <div class="mods-panel" id="mods-panel" style="display:none">
+              <div class="mods-profile-hdr">
+                <div class="mods-profile-title-row">
+                  <span class="mods-profile-name" id="mods-cur-name"></span>
+                  <span class="mods-profile-badge" id="mods-cur-badge"></span>
+                </div>
+                <div class="mods-profile-btns">
+                  <button class="btn btn-launch mods-launch-btn" id="btn-mods-launch">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <span data-i18n="mods.launch">Запустить</span>
+                  </button>
+                  <button class="btn btn-sm" id="btn-mods-folder">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    <span data-i18n="mods.folder">Папка</span>
+                  </button>
+                  <button class="btn btn-sm btn-danger" id="btn-mods-delete-profile">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                    <span data-i18n="mods.delete">Удалить</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="progress-wrap" id="mods-progress-wrap" style="display:none">
+                <div class="progress-top">
+                  <div class="progress-label" id="mods-progress-label" data-i18n="common.loading">Загрузка...</div>
+                  <button class="btn-stop" id="btn-mods-stop" style="display:none" title="Закрыть игру">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="11" height="11"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                    <span data-i18n="mods.stop">Стоп</span>
+                  </button>
+                </div>
+                <div class="progress-bar"><div class="progress-fill" id="mods-progress-fill"></div></div>
+              </div>
+
+              <div class="mods-section">
+                <div class="mods-section-hdr">
+                  <span class="mods-section-title" data-i18n="mods.installed">Установленные моды</span>
+                  <span class="mods-count" id="mods-installed-count">0</span>
+                </div>
+                <div class="mods-installed-list" id="mods-installed-list">
+                  <div class="mods-empty-small">Нет установленных модов</div>
+                </div>
+              </div>
+
+              <div class="mods-section">
+                <div class="mods-section-hdr">
+                  <span class="mods-section-title" data-i18n="mods.searchTitle">Найти на Modrinth</span>
+                </div>
+                <div class="mods-search-row">
+                  <input type="text" class="input" id="mods-search-input" data-i18n-placeholder="mods.searchPh">
+                  <button class="btn btn-primary btn-sm" id="btn-mods-search" data-i18n="mods.searchBtn">Найти</button>
+                </div>
+                <div class="mods-search-results" id="mods-search-results"></div>
+                <div class="mods-pagination" id="mods-pagination" style="display:none">
+                  <button class="btn btn-sm" id="btn-mods-prev" data-i18n="mods.prev">← Назад</button>
+                  <span class="mods-page-label" id="mods-page-label"></span>
+                  <button class="btn btn-sm" id="btn-mods-next" data-i18n="mods.next">Вперёд →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mods-modal" id="mods-modal" style="display:none">
+          <div class="mods-modal-card">
+            <div class="mods-modal-hdr">
+              <span data-i18n="mods.newProfile">Новый профиль</span>
+              <button id="btn-modal-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+            </div>
+            <div class="mods-modal-body">
+              <div class="setting-row">
+                <label data-i18n="mods.profileName">Название профиля</label>
+                <input type="text" class="input" id="modal-profile-name" data-i18n-placeholder="mods.profileNamePh">
+              </div>
+              <div class="setting-row">
+                <label data-i18n="mods.mcVersion">Версия Minecraft</label>
+                <select class="select" id="modal-mc-version"></select>
+              </div>
+              <div class="setting-row">
+                <label data-i18n="mods.loader">Загрузчик модов</label>
+                <div class="loader-row" id="modal-loader-row">
+                  <button class="loader-btn active" data-loader="fabric">Fabric</button>
+                  <button class="loader-btn" data-loader="forge">Forge</button>
+                  <button class="loader-btn" data-loader="neoforge">NeoForge</button>
+                  <button class="loader-btn" data-loader="vanilla">Vanilla</button>
+                </div>
+              </div>
+            </div>
+            <div class="mods-modal-footer">
+              <button class="btn btn-primary" id="btn-modal-create" data-i18n="mods.create">Создать</button>
+              <button class="btn btn-sm" id="btn-modal-cancel" data-i18n="mods.cancel">Отмена</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-servers">
+        <div class="page-header">
+          <h2 data-i18n="servers.title">Серверы</h2>
+        </div>
+        <div class="servers-page-wrap">
+          <div class="servers-empty-state" id="servers-empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="color:var(--muted);opacity:.4"><rect x="2" y="3" width="20" height="5" rx="1"/><rect x="2" y="10" width="20" height="5" rx="1"/><rect x="2" y="17" width="20" height="5" rx="1"/></svg>
+            <p data-i18n="servers.empty">Серверы не настроены</p>
+          </div>
+          <table class="servers-table" id="servers-table" style="display:none">
+            <thead>
+              <tr>
+                <th data-i18n="servers.name">Название</th>
+                <th data-i18n="servers.ip">IP адрес</th>
+                <th data-i18n="servers.version">Версия</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="servers-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="page" id="page-console">
         <div class="page-header">
-          <h2>Консоль</h2>
+          <h2 data-i18n="nav.console">Консоль</h2>
           <div style="display:flex;gap:8px">
-            <button class="btn btn-sm" id="btn-copy-console">Копировать</button>
-            <button class="btn btn-sm" id="btn-clear-console">Очистить</button>
+            <button class="btn btn-sm" id="btn-copy-console" data-i18n="console.copy">Копировать</button>
+            <button class="btn btn-sm" id="btn-clear-console" data-i18n="console.clear">Очистить</button>
           </div>
         </div>
         <div class="console-wrap">
