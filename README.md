@@ -11,7 +11,7 @@
 [![License](https://img.shields.io/github/license/PaltoProjects/PaltoCraft?style=flat-square&color=7c3aed&label=Лицензия)](LICENSE)
 [![Platform](https://img.shields.io/badge/Платформа-Windows-0078d4?style=flat-square)](https://github.com/PaltoProjects/PaltoCraft/releases/latest)
 
-[**Скачать**](https://github.com/PaltoProjects/PaltoCraft/releases/latest) · [Сообщить об ошибке](https://github.com/PaltoProjects/PaltoCraft/issues) · [Предложить идею](https://github.com/PaltoProjects/PaltoCraft/issues) · [Сайт](https://paltocraft.github.io/PaltoCraft/#)
+[**Скачать**](https://github.com/PaltoProjects/PaltoCraft/releases/latest) · [Сообщить об ошибке](https://github.com/PaltoProjects/PaltoCraft/issues) · [Предложить идею](https://github.com/PaltoProjects/PaltoCraft/issues)
 
 </div>
 
@@ -28,9 +28,17 @@ PaltoCraft — красивый и быстрый лаунчер Minecraft с о
 - **Все версии Minecraft** — релизы, снапшоты, бета и альфа версии
 - **Автозагрузка Java** — нужная версия JRE скачивается автоматически для каждой версии MC
 - **3D скин персонажа** — отображение скина с вращением мышью
+- **Discord RPC** — статус игры отображается в профиле Discord
 - **Система автообновлений** — лаунчер сам уведомляет о новых версиях и устанавливает их
 - **Консоль** — полный лог запуска и работы игры
 - **Гибкие настройки** — RAM, путь к Java, размер окна, поведение при запуске
+- **Зеркало ассетов (BMCLAPI)** — ускорение загрузки ассетов для пользователей с ограниченным доступом к серверам Mojang
+
+### Мод-профили
+
+- **Forge / Fabric / NeoForge** — создание профилей с загрузчиком модов в один клик; установка загрузчика происходит автоматически
+- **Браузер Modrinth** — поиск и установка модов прямо из лаунчера; установленные моды помечаются соответствующим образом
+- **Изолированные директории** — у каждого профиля своя папка для модов, конфигов и сохранений
 
 ## Установка
 
@@ -59,7 +67,7 @@ npm install
 # Запуск в режиме разработки
 npm start
 
-# Сборка установщика
+# Сборка установщика (требует NSIS)
 npm run build
 ```
 
@@ -70,6 +78,8 @@ npm run build
 - [Electron](https://electronjs.org/) — фреймворк для десктопных приложений
 - [minecraft-launcher-core](https://github.com/Pierce01/MinecraftLauncher-core) — ядро запуска Minecraft
 - [msmc](https://github.com/Hanro50/MSMC) — официальная авторизация Microsoft
+- [discord-rpc](https://github.com/discordjs/RPC) — интеграция с Discord
+- [skinview3d](https://github.com/bs-community/skinview3d) — 3D просмотр скина
 - [Adoptium](https://adoptium.net/) — автоматическая загрузка JRE
 
 ## Лицензия
