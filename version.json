@@ -1,6 +1,6 @@
 {
-  "version": "1.1.0",
-  "url": "https://github.com/PaltoCraft/PaltoCraft/releases/download/v1.1.0/PaltoCraft-Setup-1.1.0.exe",
-  "notes": "Security update: Electron 42, зашифрованное хранение токенов, защита от shell injection и path traversal",
-  "sha256": "632d644cad81e054e260426fb1821c0f6f9ad56e0191c36dfb73aea9a06da26c"
+  "version": "1.1.2",
+  "url": "https://github.com/PaltoProjects/PaltoCraft/releases/download/v1.1.2/PaltoCraft-Setup-1.1.2.exe",
+  "notes": "Исправлен запуск Forge/NeoForge мод-профилей. Зеркало BMCLAPI для ассетов. Кастомный диалог подтверждения. Пометка установленных модов в браузере Modrinth.",
+  "sha256": ""
 }

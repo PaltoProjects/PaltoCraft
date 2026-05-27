@@ -37,11 +37,28 @@ contextBridge.exposeInMainWorld('launcher', {
   installForge: (mcVersion, gameDir) => ipcRenderer.invoke('install-forge', mcVersion, gameDir),
   installNeoforge: (mcVersion, gameDir) => ipcRenderer.invoke('install-neoforge', mcVersion, gameDir),
   downloadMod: (modId, mcVersion, loader, gameDir) => ipcRenderer.invoke('download-mod-modrinth', modId, mcVersion, loader, gameDir),
+  readCrashLog: (gameDir, launchTime) => ipcRenderer.invoke('read-crash-log', gameDir, launchTime),
   openPath: (p) => ipcRenderer.invoke('open-path', p),
   killGame: () => ipcRenderer.invoke('kill-game'),
 
+  discordRpcSave: (clientId) => ipcRenderer.invoke('discord-rpc-save', clientId),
+  discordRpcGet: () => ipcRenderer.invoke('discord-rpc-get'),
+
+  modProfilesList: () => ipcRenderer.invoke('mod-profiles-list'),
+  modProfileSave: (profile) => ipcRenderer.invoke('mod-profile-save', profile),
+  modProfileDelete: (profileId) => ipcRenderer.invoke('mod-profile-delete', profileId),
+  modProfileGamedir: (profileId) => ipcRenderer.invoke('mod-profile-gamedir', profileId),
+
+  modrinthSearch: (query, mcVersion, loader, offset) => ipcRenderer.invoke('modrinth-search', query, mcVersion, loader, offset),
+  modrinthInstallMod: (profileId, projectId) => ipcRenderer.invoke('modrinth-install-mod', profileId, projectId),
+  modrinthInstalledIds: (profileId) => ipcRenderer.invoke('modrinth-installed-ids', profileId),
+
+  modListInstalled: (profileId) => ipcRenderer.invoke('mod-list-installed', profileId),
+  modToggle: (profileId, filename) => ipcRenderer.invoke('mod-toggle', profileId, filename),
+  modDeleteFile: (profileId, filename) => ipcRenderer.invoke('mod-delete-file', profileId, filename),
+
   on: (channel, callback) => {
-    const allowed = ['auth-update', 'launch-log', 'launch-progress', 'launch-close', 'java-status', 'java-progress', 'update-progress', 'mod-status', 'mod-progress'];
+    const allowed = ['auth-update', 'launch-log', 'launch-progress', 'launch-close', 'java-status', 'java-progress', 'update-progress', 'mod-status', 'mod-progress', 'mod-dl-progress'];
     if (allowed.includes(channel)) {
       ipcRenderer.on(channel, (_, ...args) => callback(...args));
     }
