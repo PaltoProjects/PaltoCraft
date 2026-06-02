@@ -7,6 +7,14 @@ const JavaScriptObfuscator = require('javascript-obfuscator');
 const SRC_DIR = __dirname;
 const BUILD_DIR = path.join(__dirname, '.build');
 
+// Single source of truth for the version — read from package.json so it never
+// drifts out of sync with the rest of the project.
+const VERSION = require('./package.json').version;
+// electron-packager's CLI coerces a 2-segment value like "1.2" into the number
+// 1.2 and then rejects it ("Invalid processed options"), so pad to 3 segments
+// for the exe metadata. User-facing version stays VERSION ("1.2").
+const WIN_VERSION = VERSION.split('.').concat(['0', '0', '0']).slice(0, 3).join('.');
+
 const JS_FILES = ['main.js', 'preload.js', 'renderer.js', 'store.js'];
 const COPY_FILES = ['index.html', 'styles.css', 'package.json', 'package-lock.json', 'version.json', 'servers.json', 'LICENSE'];
 const COPY_DIRS = ['assets', 'node_modules'];
@@ -120,7 +128,7 @@ function copyDirs() {
 }
 
 function generateIntegrity() {
-  const files = ['renderer.js', 'preload.js', 'index.html', 'styles.css'];
+  const files = ['main.js', 'preload.js', 'renderer.js', 'store.js', 'index.html', 'styles.css'];
   const manifest = {};
   for (const file of files) {
     const filePath = path.join(BUILD_DIR, file);
@@ -143,7 +151,7 @@ function package_() {
     '--arch=x64',
     '--out=dist',
     '--overwrite',
-    '--app-version=1.1.2',
+    `--app-version=${WIN_VERSION}`,
     '--icon=assets/icon.ico',
     '--no-asar',
     '--prune'
@@ -159,12 +167,12 @@ function buildInstaller() {
     'powershell -Command "& \'C:\\Program Files (x86)\\NSIS\\makensis.exe\' /INPUTCHARSET UTF8 \'installer.nsi\'"',
     { stdio: 'inherit', cwd: SRC_DIR }
   );
-  console.log('✓ Installer: dist/PaltoCraft-Setup-1.1.2.exe');
+  console.log(`✓ Installer: dist/PaltoCraft-Setup-${VERSION}.exe`);
 }
 
 function packInstaller() {
   const upx = 'C:\\upx\\upx.exe';
-  const exe = path.join(SRC_DIR, 'dist', 'PaltoCraft-Setup-1.1.2.exe');
+  const exe = path.join(SRC_DIR, 'dist', `PaltoCraft-Setup-${VERSION}.exe`);
   if (!fs.existsSync(upx)) { console.log('⚠ UPX не найден — пропускаем упаковку'); return; }
   if (!fs.existsSync(exe)) { console.log('⚠ Installer не найден — пропускаем UPX'); return; }
   console.log('\n📦 Packing installer with UPX...');

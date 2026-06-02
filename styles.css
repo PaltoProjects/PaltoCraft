@@ -697,6 +697,33 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 }
 .crash-actions { display: flex; gap: 10px; margin-top: 4px; }
 
+/* ── Auth Error Toast ─────────────────────────────────────────────────────────── */
+#auth-error-toast {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #2a1a1a;
+  border: 1.5px solid #ff6b6b;
+  border-radius: 8px;
+  padding: 14px 18px;
+  max-width: 400px;
+  width: max-content;
+  color: #ffb3b3;
+  font-size: 13px;
+  line-height: 1.5;
+  z-index: 200;
+  box-shadow: 0 4px 24px rgba(255, 107, 107, 0.18);
+  animation: toastIn .25s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* ── Confirm Dialog ──────────────────────────────────────────────────────────── */
 .confirm-overlay {
   position: fixed; inset: 38px 0 0 0; z-index: 1000;

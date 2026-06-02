@@ -9,7 +9,7 @@ const Store = require('./store');
 
 const store = new Store();
 
-const CURRENT_VERSION = '1.1.2';
+const CURRENT_VERSION = '1.2';
 const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/PaltoProjects/PaltoCraft/main/version.json';
 
 // ── Discord Rich Presence ─────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ function checkIntegrity() {
   let manifest;
   try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { return; }
 
-  const files = ['renderer.js', 'preload.js', 'index.html', 'styles.css'];
+  const files = ['main.js', 'preload.js', 'renderer.js', 'store.js', 'index.html', 'styles.css'];
   for (const file of files) {
     const filePath = path.join(__dirname, file);
     if (!fs.existsSync(filePath)) continue;
@@ -117,12 +117,22 @@ async function getRequiredJavaVersion(mcVersion, allVersionsManifest) {
   return 8;
 }
 
-function fetchJson(url) {
+// Safely send to the renderer only when the window is still alive.
+function sendToWindow(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
+}
+
+function fetchJson(url, _redirects = 0) {
   return new Promise((resolve, reject) => {
+    if (_redirects > 5) return reject(new Error('too many redirects'));
     const lib = url.startsWith('https') ? https : http;
     lib.get(url, { headers: { 'User-Agent': 'PaltoCraft/1.0' }, timeout: 10000 }, (res) => {
-      if ([301, 302, 307, 308].includes(res.statusCode)) {
-        return fetchJson(res.headers.location).then(resolve).catch(reject);
+      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume();
+        const next = new URL(res.headers.location, url).toString();
+        return fetchJson(next, _redirects + 1).then(resolve).catch(reject);
       }
       let data = '';
       res.on('data', c => data += c);
@@ -148,35 +158,67 @@ function findJavaExe(javaDir) {
   return null;
 }
 
-function downloadFile(url, destPath, onProgress) {
+// Downloads a URL to destPath. Optional `integrity` = { algo, hash } verifies
+// the file hash after download (e.g. { algo: 'sha512', hash: '...' }) and
+// rejects on mismatch, deleting the partial file.
+function downloadFile(url, destPath, onProgress, integrity) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(destPath);
-    const lib = url.startsWith('https') ? https : http;
+    const hasher = integrity && integrity.hash ? crypto.createHash(integrity.algo || 'sha256') : null;
+    let settled = false;
 
     const cleanup = (err) => {
+      if (settled) return;
+      settled = true;
       file.destroy();
       try { fs.unlinkSync(destPath); } catch {}
       reject(err);
     };
 
-    const request = (u) => lib.get(u, { headers: { 'User-Agent': 'PaltoCraft/1.0' } }, (res) => {
-      if ([301, 302, 307, 308].includes(res.statusCode)) {
-        return request(res.headers.location);
-      }
-      if (res.statusCode !== 200) {
-        return cleanup(new Error(`HTTP ${res.statusCode}`));
-      }
-      const total = parseInt(res.headers['content-length'] || '0', 10);
-      let received = 0;
-      res.on('data', chunk => {
-        received += chunk.length;
-        file.write(chunk);
-        if (total && onProgress) onProgress(received, total);
+    const request = (u, redirects) => {
+      const lib = u.startsWith('https') ? https : http;
+      const req = lib.get(u, { headers: { 'User-Agent': 'PaltoCraft/1.0' }, timeout: 30000 }, (res) => {
+        if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+          res.resume();
+          if (redirects > 5) return cleanup(new Error('too many redirects'));
+          return request(new URL(res.headers.location, u).toString(), redirects + 1);
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          return cleanup(new Error(`HTTP ${res.statusCode}`));
+        }
+        const total = parseInt(res.headers['content-length'] || '0', 10);
+        let received = 0;
+        res.on('data', chunk => {
+          received += chunk.length;
+          if (hasher) hasher.update(chunk);
+          // Respect backpressure: pause the socket if the file buffer is full.
+          if (!file.write(chunk)) {
+            res.pause();
+            file.once('drain', () => res.resume());
+          }
+          if (total && onProgress) onProgress(received, total);
+        });
+        res.on('end', () => {
+          file.end(() => {
+            if (hasher) {
+              const got = hasher.digest('hex').toLowerCase();
+              if (got !== String(integrity.hash).toLowerCase()) {
+                try { fs.unlinkSync(destPath); } catch {}
+                return reject(new Error('Контрольная сумма файла не совпадает — загрузка отклонена'));
+              }
+            }
+            settled = true;
+            resolve();
+          });
+        });
+        res.on('error', cleanup);
       });
-      res.on('end', () => { file.end(); resolve(); });
-      res.on('error', cleanup);
-    });
-    request(url);
+      req.on('error', cleanup);
+      req.on('timeout', () => { req.destroy(new Error('timeout')); });
+    };
+
+    request(url, 0);
     file.on('error', cleanup);
   });
 }
@@ -224,12 +266,20 @@ async function getAdoptiumDownloadUrl(javaVersion) {
   });
 }
 
+// Holds the update metadata fetched from the trusted version.json in the
+// main process. The renderer never supplies the URL or hash used for the
+// actual download/verification — it only triggers the action.
+let _pendingUpdate = null;
+
 ipcMain.handle('check-update', async () => {
   try {
     const json = await fetchJson(UPDATE_CHECK_URL);
     if (!json || !json.version) return { hasUpdate: false };
     const hasUpdate = compareVersions(json.version, CURRENT_VERSION) > 0;
-    return { hasUpdate, version: json.version, url: json.url, notes: json.notes || '' };
+    _pendingUpdate = hasUpdate
+      ? { version: json.version, url: json.url, sha256: json.sha256 || null }
+      : null;
+    return { hasUpdate, version: json.version, notes: json.notes || '' };
   } catch (err) {
     return { hasUpdate: false, error: err.message };
   }
@@ -237,7 +287,24 @@ ipcMain.handle('check-update', async () => {
 
 const UPDATE_INSTALLER_PATH = () => path.join(app.getPath('temp'), 'PaltoCraft-Update.exe');
 
-ipcMain.handle('download-update', async (_, url, sha256) => {
+ipcMain.handle('download-update', async () => {
+  // Use only the trusted values captured during check-update. Ignore anything
+  // the renderer might pass so a compromised renderer can't substitute its own
+  // installer + matching hash.
+  if (!_pendingUpdate || !_pendingUpdate.url) {
+    return { success: false, error: 'Нет доступного обновления' };
+  }
+  if (!_pendingUpdate.sha256) {
+    return { success: false, error: 'У обновления нет контрольной суммы — установка отменена' };
+  }
+  const { url, sha256 } = _pendingUpdate;
+  // Only allow downloading the installer over HTTPS from the official repo host.
+  let host = '';
+  try { host = new URL(url).host.toLowerCase(); } catch {}
+  const allowedHosts = ['github.com', 'objects.githubusercontent.com', 'github-releases.githubusercontent.com'];
+  if (!url.startsWith('https://') || !allowedHosts.some(h => host === h || host.endsWith('.' + h))) {
+    return { success: false, error: 'Недопустимый источник обновления' };
+  }
   const tmpPath = UPDATE_INSTALLER_PATH();
   try {
     await downloadFile(url, tmpPath, (received, total) => {
@@ -245,12 +312,10 @@ ipcMain.handle('download-update', async (_, url, sha256) => {
         mainWindow.webContents.send('update-progress', { received, total });
       }
     });
-    if (sha256) {
-      const fileHash = crypto.createHash('sha256').update(fs.readFileSync(tmpPath)).digest('hex');
-      if (fileHash.toLowerCase() !== sha256.toLowerCase()) {
-        fs.unlinkSync(tmpPath);
-        return { success: false, error: 'Контрольная сумма не совпадает — файл повреждён или подменён' };
-      }
+    const fileHash = crypto.createHash('sha256').update(fs.readFileSync(tmpPath)).digest('hex');
+    if (fileHash.toLowerCase() !== sha256.toLowerCase()) {
+      fs.unlinkSync(tmpPath);
+      return { success: false, error: 'Контрольная сумма не совпадает — файл повреждён или подменён' };
     }
     return { success: true, path: tmpPath };
   } catch (err) {
@@ -286,15 +351,16 @@ ipcMain.handle('download-java', async (_, javaVer, gameDir) => {
   const tmpZip = path.join(app.getPath('temp'), `java-${javaVer}-jre.zip`);
 
   try {
-    mainWindow.webContents.send('java-status', { stage: 'fetch-url', javaVer });
-    const { url, size } = await getAdoptiumDownloadUrl(javaVer);
+    sendToWindow('java-status', { stage: 'fetch-url', javaVer });
+    const { url, size, checksum } = await getAdoptiumDownloadUrl(javaVer);
 
-    mainWindow.webContents.send('java-status', { stage: 'downloading', javaVer, size });
+    sendToWindow('java-status', { stage: 'downloading', javaVer, size });
+    // Adoptium publishes a sha256 checksum for each package — verify it.
     await downloadFile(url, tmpZip, (received, total) => {
-      mainWindow.webContents.send('java-progress', { received, total });
-    });
+      sendToWindow('java-progress', { received, total });
+    }, checksum ? { algo: 'sha256', hash: checksum } : null);
 
-    mainWindow.webContents.send('java-status', { stage: 'extracting', javaVer });
+    sendToWindow('java-status', { stage: 'extracting', javaVer });
     await extractZip(tmpZip, javaDir);
 
     try { fs.unlinkSync(tmpZip); } catch {}
@@ -302,7 +368,7 @@ ipcMain.handle('download-java', async (_, javaVer, gameDir) => {
     const javaExe = findJavaExe(javaDir);
     if (!javaExe) throw new Error('java.exe не найден после распаковки');
 
-    mainWindow.webContents.send('java-status', { stage: 'done', javaVer, javaExe });
+    sendToWindow('java-status', { stage: 'done', javaVer, javaExe });
     return { success: true, javaExe };
   } catch (err) {
     try { if (fs.existsSync(tmpZip)) fs.unlinkSync(tmpZip); } catch {}
@@ -376,6 +442,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js')
     }
   });
@@ -383,6 +450,19 @@ function createWindow() {
   mainWindow.loadFile('index.html');
   mainWindow.maximize();
   mainWindow.setMenuBarVisibility(false);
+
+  // Never let the renderer navigate away from the local app or open new windows.
+  // Any external link is handed to the OS browser instead of loading in-app.
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('file://')) {
+      e.preventDefault();
+      if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    }
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
 
   // Hide to tray instead of closing when X is clicked
   mainWindow.on('close', (e) => {
@@ -403,12 +483,17 @@ app.whenReady().then(() => {
 app.on('before-quit', () => { isQuitting = true; });
 app.on('window-all-closed', () => { /* kept alive via tray */ });
 
-ipcMain.on('window-minimize', () => mainWindow.minimize());
+ipcMain.on('window-minimize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+});
 ipcMain.on('window-maximize', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
   else mainWindow.maximize();
 });
-ipcMain.on('window-close', () => mainWindow.hide());
+ipcMain.on('window-close', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+});
 
 const SENSITIVE_KEYS = ['auth-token', 'auth-refresh', 'auth-profile'];
 
@@ -506,7 +591,16 @@ ipcMain.handle('auth-microsoft', async () => {
 
     return { success: true, token: mclcToken, profile };
   } catch (err) {
-    return { success: false, error: err.message };
+    const msg = (err.message || '').toLowerCase();
+    let code = 'UNKNOWN';
+    if (msg.includes('does not have game') || msg.includes('does not own') || msg.includes('not own') || msg.includes('no game') || msg.includes('game ownership')) {
+      code = 'NO_LICENSE';
+    } else if (msg.includes('cancel') || msg.includes('closed') || msg.includes('abort') || msg.includes('user closed')) {
+      code = 'CANCELLED';
+    } else if (msg.includes('network') || msg.includes('fetch') || msg.includes('enotfound') || msg.includes('timeout')) {
+      code = 'NETWORK';
+    }
+    return { success: false, error: code, errorDetail: err.message };
   }
 });
 
@@ -720,11 +814,24 @@ ipcMain.handle('read-crash-log', async (_, gameDir, launchTime) => {
   return { text: text || 'Лог недоступен.' };
 });
 
+// Only these hosts may be contacted when resolving a skin. Prevents the
+// renderer from turning this handler into an SSRF probe of arbitrary hosts.
+const SKIN_ALLOWED_HOSTS = ['textures.minecraft.net', 'sessionserver.mojang.com'];
+function isAllowedSkinUrl(u) {
+  try {
+    const parsed = new URL(String(u));
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.host.toLowerCase();
+    return SKIN_ALLOWED_HOSTS.some(h => host === h || host.endsWith('.' + h));
+  } catch { return false; }
+}
+
 ipcMain.handle('get-skin-data', async (_, uuidOrUrl) => {
 
   const fetchBuffer = (url) => new Promise((resolve) => {
+    if (!isAllowedSkinUrl(url)) { resolve(null); return; }
     try {
-      const lib = String(url).startsWith('https') ? https : http;
+      const lib = https;
       const req = lib.get(String(url), { headers: { 'User-Agent': 'PaltoCraft/1.0' }, timeout: 8000 }, (res) => {
         if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
           fetchBuffer(res.headers.location).then(resolve);
@@ -745,9 +852,13 @@ ipcMain.handle('get-skin-data', async (_, uuidOrUrl) => {
   try {
     let skinUrl = uuidOrUrl;
 
-    if (!uuidOrUrl.startsWith('http')) {
+    if (!String(uuidOrUrl).startsWith('http')) {
+      // Treat as a Minecraft UUID — must be exactly 32 hex chars (dashes stripped)
+      // to avoid path injection into the Mojang URL.
+      const uuid = String(uuidOrUrl).replace(/-/g, '');
+      if (!/^[0-9a-f]{32}$/i.test(uuid)) return null;
       const profileBuf = await fetchBuffer(
-        `https://sessionserver.mojang.com/session/minecraft/profile/${uuidOrUrl}`
+        `https://sessionserver.mojang.com/session/minecraft/profile/${uuid}`
       );
       if (!profileBuf) return null;
       const profileJson = JSON.parse(profileBuf.toString('utf8'));
@@ -965,7 +1076,8 @@ ipcMain.handle('download-mod-modrinth', async (_, modId, mcVersion, loader, game
     const dest = path.join(modsDir, file.filename);
     if (fs.existsSync(dest)) return { success: true, skipped: true };
     send({ stage: 'downloading-mod', modId, filename: file.filename });
-    await downloadFile(file.url, dest);
+    const integrity = file.hashes && file.hashes.sha512 ? { algo: 'sha512', hash: file.hashes.sha512 } : null;
+    await downloadFile(file.url, dest, null, integrity);
     return { success: true, skipped: false };
   } catch (err) {
     return { success: false, error: err.message };
@@ -985,8 +1097,19 @@ ipcMain.handle('kill-game', () => {
 });
 
 ipcMain.handle('open-path', async (_, folderPath) => {
-  try { await shell.openPath(folderPath); return { success: true }; }
-  catch (err) { return { success: false, error: err.message }; }
+  try {
+    const resolved = path.resolve(String(folderPath || ''));
+    let st;
+    try { st = fs.statSync(resolved); }
+    catch { return { success: false, error: 'Путь не найден' }; }
+    // Only allow opening directories. This prevents a compromised renderer
+    // from using shell.openPath to execute an arbitrary file.
+    if (!st.isDirectory()) {
+      return { success: false, error: 'Можно открывать только папки' };
+    }
+    await shell.openPath(resolved);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
 });
 
 ipcMain.handle('check-admin', (_, uuid) => {
@@ -1008,6 +1131,9 @@ ipcMain.handle('get-servers', async () => {
 function safeCacheKey(key) {
   if (typeof key !== 'string' || key.length === 0 || key.length > 200) return null;
   if (!/^[\w\-.]+$/.test(key)) return null;
+  // Defence in depth: never let the cache write a file with an executable
+  // extension (so it can't be combined with shell.openPath to run code).
+  if (/\.(exe|bat|cmd|com|scr|ps1|psm1|msi|vbs|vbe|js|jse|jar|dll|lnk|sh|app|reg|hta|wsf|cpl)$/i.test(key)) return null;
   return key;
 }
 
@@ -1175,9 +1301,10 @@ ipcMain.handle('modrinth-install-mod', async (_, profileId, projectId) => {
     }
 
     send({ stage: 'downloading', filename: file.filename });
+    const integrity = file.hashes && file.hashes.sha512 ? { algo: 'sha512', hash: file.hashes.sha512 } : null;
     await downloadFile(file.url, dest, (received, total) => {
       send({ stage: 'progress', received, total });
-    });
+    }, integrity);
 
     // Save projectId → filename mapping
     const map = readModrinthMap(profile);

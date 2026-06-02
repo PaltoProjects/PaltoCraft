@@ -30,7 +30,7 @@ const I18N = {
     'settings.hideLauncher': 'Скрывать лаунчер во время игры',
     'settings.closeLauncher': 'Закрывать лаунчер при запуске игры',
     'settings.language': 'Язык / Language', 'settings.about': 'О лаунчере',
-    'settings.version': 'Версия 1.1.2',
+    'settings.version': 'Версия 1.2',
     'settings.aboutDesc': 'Лаунчер Minecraft с официальной авторизацией Microsoft.',
     'settings.save': 'Сохранить настройки', 'settings.reset': 'Сбросить',
     'settings.saved': 'Сохранено!', 'settings.resetDone': 'Сброшено!',
@@ -96,7 +96,7 @@ const I18N = {
     'settings.hideLauncher': 'Hide launcher while playing',
     'settings.closeLauncher': 'Close launcher when starting game',
     'settings.language': 'Language / Язык', 'settings.about': 'About',
-    'settings.version': 'Version 1.1.2',
+    'settings.version': 'Version 1.2',
     'settings.aboutDesc': 'Minecraft launcher with official Microsoft authentication.',
     'settings.save': 'Save settings', 'settings.reset': 'Reset',
     'settings.saved': 'Saved!', 'settings.resetDone': 'Reset!',
@@ -169,6 +169,17 @@ document.getElementById('btn-crash-close').addEventListener('click', () => {
 
 // ── Custom confirm dialog ─────────────────────────────────────────────────────
 let _confirmResolve = null;
+
+function showAuthError(message) {
+  const existing = document.getElementById('auth-error-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'auth-error-toast';
+  toast.innerHTML = `<svg width="18" height="18" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;margin-top:2px"><rect x="7" y="3" width="2" height="6" rx="1" fill="#ff6b6b"/><rect x="7" y="11" width="2" height="2" rx="1" fill="#ff6b6b"/><rect x="1" y="1" width="14" height="14" rx="2" stroke="#ff6b6b" stroke-width="1.5"/></svg><span>${_esc(message).replace(/\n/g, '<br>')}</span>`;
+  const loginPage = document.getElementById('page-home') || document.body;
+  loginPage.appendChild(toast);
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, 8000);
+}
 
 function showConfirm(message, { okLabel = 'Удалить', danger = true } = {}) {
   return new Promise((resolve) => {
@@ -320,7 +331,14 @@ document.getElementById('btn-login').addEventListener('click', async () => {
   if (result.success) {
     setLoggedIn(result.token, result.profile);
   } else {
-    alert('Ошибка входа: ' + (result.error || 'Неизвестная ошибка'));
+    const AUTH_ERRORS = {
+      NO_LICENSE:  'На этом аккаунте Microsoft нет лицензии Minecraft: Java Edition.\nКупить игру можно на minecraft.net',
+      CANCELLED:   'Вход отменён.',
+      NETWORK:     'Ошибка сети. Проверь подключение к интернету и попробуй снова.',
+      UNKNOWN:     'Не удалось войти. Попробуй ещё раз или перезапусти лаунчер.'
+    };
+    const msg = AUTH_ERRORS[result.error] || AUTH_ERRORS.UNKNOWN;
+    showAuthError(msg);
   }
 
   btn.disabled = false;
@@ -911,8 +929,9 @@ async function checkForUpdates() {
     const result = await window.launcher.checkUpdate();
     if (!result.hasUpdate) return;
 
-    _updateUrl = result.url;
-    _updateSha256 = result.sha256 || null;
+    // URL + sha256 now live in the main process; renderer only needs the flag.
+    _updateUrl = true;
+    _updateSha256 = null;
 
     document.getElementById('update-version-label').textContent = `v${result.version}`;
     document.getElementById('update-notes').textContent = result.notes || '';
@@ -952,8 +971,8 @@ document.getElementById('btn-update').addEventListener('click', async () => {
     progressLabel.textContent = `${pct}% (${mb} / ${totalMb} MB)`;
   });
 
-  appendConsole('info', `Загрузка обновления: ${_updateUrl}`);
-  const result = await window.launcher.downloadUpdate(_updateUrl, _updateSha256);
+  appendConsole('info', 'Загрузка обновления...');
+  const result = await window.launcher.downloadUpdate();
 
   if (result.success) {
     _downloadedPath = result.path;

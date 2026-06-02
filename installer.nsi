@@ -11,7 +11,7 @@ Unicode True
 ;--------------------------------
 ; Настройки приложения
 !define APP_NAME        "PaltoCraft"
-!define APP_VERSION     "1.1.2"
+!define APP_VERSION     "1.2"
 !define APP_PUBLISHER   "PaltoCraft"
 !define APP_URL         "https://github.com/PaltoProjects/PaltoCraft"
 !define APP_EXE         "PaltoCraft.exe"

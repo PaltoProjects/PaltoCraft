@@ -1,6 +1,6 @@
 {
-  "version": "1.1.2",
-  "url": "https://github.com/PaltoProjects/PaltoCraft/releases/download/v1.1.2/PaltoCraft-Setup-1.1.2.exe",
-  "notes": "Исправлен запуск Forge/NeoForge мод-профилей. Зеркало BMCLAPI для ассетов. Кастомный диалог подтверждения. Пометка установленных модов в браузере Modrinth.",
-  "sha256": "47e962e622de5b7b7f1019c6f80ced8bcffb1cc2228ed4c8b2658508a06e34b7"
+  "version": "1.2",
+  "url": "https://github.com/PaltoProjects/PaltoCraft/releases/download/v1.2/PaltoCraft-Setup-1.2.exe",
+  "notes": "Безопасность: добавлен Content-Security-Policy и sandbox для окна, проверка контрольных сумм при загрузке Java и модов, безопасная проверка обновлений, защита от SSRF при загрузке скинов. Исправлены мелкие баги (таймауты загрузок, обработка редиректов, проверки окна).",
+  "sha256": "51fb087a971eea71d8d4e9b5c1315e617d434fa29fd65be7d99953c82925a366"
 }

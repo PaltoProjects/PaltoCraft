@@ -1,53 +1,12 @@
 {
   "name": "paltocraft",
-  "version": "1.1.2",
+  "version": "1.2",
   "description": "PaltoCraft - Minecraft Launcher with Microsoft Auth",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "build": "node build.js",
-    "build:quick": "electron-packager .build PaltoCraft --platform=win32 --arch=x64 --out=dist --overwrite --app-version=1.0.0 --icon=assets/icon.ico --asar.unpackDir=node_modules --prune --ignore=dist"
-  },
-  "build": {
-    "appId": "com.paltocraft.launcher",
-    "productName": "PaltoCraft",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "main.js",
-      "preload.js",
-      "renderer.js",
-      "store.js",
-      "index.html",
-      "styles.css",
-      "assets/**",
-      "node_modules/**"
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "assets/icon.ico",
-      "signAndEditExecutable": false
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico",
-      "installerHeaderIcon": "assets/icon.ico",
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "PaltoCraft",
-      "artifactName": "PaltoCraft-Setup-${version}.exe"
-    }
+    "build": "node build.js"
   },
   "dependencies": {
     "discord-rpc": "^4.0.1",
@@ -66,5 +25,5 @@
     "javascript-obfuscator": "^5.4.1"
   },
   "author": "PaltoCraft",
-  "license": "MIT"
+  "license": "SEE LICENSE IN LICENSE"
 }

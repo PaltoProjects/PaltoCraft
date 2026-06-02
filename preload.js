@@ -22,7 +22,9 @@ contextBridge.exposeInMainWorld('launcher', {
   downloadJava: (javaVer, gameDir) => ipcRenderer.invoke('download-java', javaVer, gameDir),
 
   checkUpdate: () => ipcRenderer.invoke('check-update'),
-  downloadUpdate: (url, sha256) => ipcRenderer.invoke('download-update', url, sha256),
+  // URL + hash are held in the main process (from version.json); the renderer
+  // only triggers the download, it cannot choose what gets installed.
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
   installUpdate: (installerPath) => ipcRenderer.invoke('install-update', installerPath),
 
   cacheSet: (key, value) => ipcRenderer.invoke('cache-set', key, value),
@@ -40,9 +42,6 @@ contextBridge.exposeInMainWorld('launcher', {
   readCrashLog: (gameDir, launchTime) => ipcRenderer.invoke('read-crash-log', gameDir, launchTime),
   openPath: (p) => ipcRenderer.invoke('open-path', p),
   killGame: () => ipcRenderer.invoke('kill-game'),
-
-  discordRpcSave: (clientId) => ipcRenderer.invoke('discord-rpc-save', clientId),
-  discordRpcGet: () => ipcRenderer.invoke('discord-rpc-get'),
 
   modProfilesList: () => ipcRenderer.invoke('mod-profiles-list'),
   modProfileSave: (profile) => ipcRenderer.invoke('mod-profile-save', profile),
