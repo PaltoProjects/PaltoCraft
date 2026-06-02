@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://paltoprojects.github.io/PaltoCraft/sitemap.xml
