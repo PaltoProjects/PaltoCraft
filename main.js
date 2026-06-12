@@ -9,7 +9,7 @@ const Store = require('./store');
 
 const store = new Store();
 
-const CURRENT_VERSION = '1.2';
+const CURRENT_VERSION = '1.3';
 const UPDATE_CHECK_URL = 'https://raw.githubusercontent.com/PaltoProjects/PaltoCraft/main/version.json';
 
 // ── Discord Rich Presence ─────────────────────────────────────────────────────
@@ -161,7 +161,18 @@ function findJavaExe(javaDir) {
 // Downloads a URL to destPath. Optional `integrity` = { algo, hash } verifies
 // the file hash after download (e.g. { algo: 'sha512', hash: '...' }) and
 // rejects on mismatch, deleting the partial file.
-function downloadFile(url, destPath, onProgress, integrity) {
+// `allowedHosts` (optional) restricts which hosts the download — including any
+// redirect target — may come from. Used for executables/installers that are run
+// afterwards, so a redirect can't divert the download to an attacker host.
+function hostAllowed(u, allowedHosts) {
+  if (!allowedHosts || !allowedHosts.length) return true;
+  try {
+    const host = new URL(u).host.toLowerCase();
+    return allowedHosts.some(h => host === h || host.endsWith('.' + h));
+  } catch { return false; }
+}
+
+function downloadFile(url, destPath, onProgress, integrity, allowedHosts) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(destPath);
     const hasher = integrity && integrity.hash ? crypto.createHash(integrity.algo || 'sha256') : null;
@@ -175,13 +186,17 @@ function downloadFile(url, destPath, onProgress, integrity) {
       reject(err);
     };
 
+    if (!hostAllowed(url, allowedHosts)) return cleanup(new Error('Недопустимый источник загрузки'));
+
     const request = (u, redirects) => {
       const lib = u.startsWith('https') ? https : http;
       const req = lib.get(u, { headers: { 'User-Agent': 'PaltoCraft/1.0' }, timeout: 30000 }, (res) => {
         if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
           res.resume();
           if (redirects > 5) return cleanup(new Error('too many redirects'));
-          return request(new URL(res.headers.location, u).toString(), redirects + 1);
+          const next = new URL(res.headers.location, u).toString();
+          if (!hostAllowed(next, allowedHosts)) return cleanup(new Error('Недопустимый источник загрузки (редирект)'));
+          return request(next, redirects + 1);
         }
         if (res.statusCode !== 200) {
           res.resume();
@@ -495,7 +510,15 @@ ipcMain.on('window-close', () => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
 });
 
-const SENSITIVE_KEYS = ['auth-token', 'auth-refresh', 'auth-profile'];
+const SENSITIVE_KEYS = ['auth-token', 'auth-refresh', 'auth-profile', 'github-token'];
+
+// Keys whose DECRYPTED value must never be handed to the renderer. The renderer
+// only needs to know *that* a session exists (see 'auth-status'); the raw
+// Microsoft/Minecraft access token, the refresh token and the GitHub write-token
+// stay in the main process. Otherwise the at-rest encryption is pointless — any
+// renderer-side code execution could just ask for the plaintext. 'auth-profile'
+// (name / uuid / skin) is non-secret and stays readable for the UI.
+const RENDERER_PRIVATE_KEYS = ['auth-token', 'auth-refresh', 'github-token'];
 
 function secureGet(key) {
   if (SENSITIVE_KEYS.includes(key)) return store.encryptedGet(key);
@@ -506,9 +529,19 @@ function secureSet(key, value) {
   store.set(key, value);
 }
 
-ipcMain.handle('store-get', (_, key) => secureGet(key));
-ipcMain.handle('store-set', (_, key, value) => secureSet(key, value));
+ipcMain.handle('store-get', (_, key) => {
+  if (RENDERER_PRIVATE_KEYS.includes(key)) return null;
+  return secureGet(key);
+});
+ipcMain.handle('store-set', (_, key, value) => {
+  // The renderer must not be able to overwrite the private credentials either.
+  if (RENDERER_PRIVATE_KEYS.includes(key)) return;
+  secureSet(key, value);
+});
 ipcMain.handle('store-delete', (_, key) => store.delete(key));
+
+// Safe way for the renderer to learn auth state without ever seeing the token.
+ipcMain.handle('auth-status', () => ({ loggedIn: !!secureGet('auth-token') }));
 
 ipcMain.handle('get-default-gamedir', () => getDefaultGameDir());
 
@@ -589,7 +622,9 @@ ipcMain.handle('auth-microsoft', async () => {
     secureSet('auth-profile', profile);
     secureSet('auth-refresh', xboxManager.save());
 
-    return { success: true, token: mclcToken, profile };
+    // Do NOT return the token to the renderer — it never needs the raw access
+    // token (launch happens in main). Hand back only the non-secret profile.
+    return { success: true, profile };
   } catch (err) {
     const msg = (err.message || '').toLowerCase();
     let code = 'UNKNOWN';
@@ -679,15 +714,27 @@ ipcMain.handle('launch-minecraft', async (_, options) => {
       fs.mkdirSync(sharedDir, { recursive: true });
     }
 
-    // Build mirror URL overrides — replace Mojang CDN with user-selected mirror
+    // Build mirror URL overrides — replace Mojang CDN with user-selected mirror.
+    // The mirror serves game assets that are loaded into the JVM, so only allow
+    // HTTPS from a known-good mirror host; anything else falls back to Mojang to
+    // prevent a compromised renderer from injecting a malicious asset source.
+    const ASSET_MIRROR_HOSTS = ['bmclapi2.bangbang93.com', 'bmclapi.bangbang93.com'];
     const urlOverrides = {};
+    let activeMirror = '';
     if (options.assetMirror) {
-      urlOverrides.resource = options.assetMirror; // overrides resources.download.minecraft.net
+      try {
+        const mu = new URL(String(options.assetMirror));
+        const host = mu.host.toLowerCase();
+        if (mu.protocol === 'https:' && ASSET_MIRROR_HOSTS.some(h => host === h || host.endsWith('.' + h))) {
+          activeMirror = options.assetMirror;
+          urlOverrides.resource = activeMirror; // overrides resources.download.minecraft.net
+        }
+      } catch {}
     }
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('launch-log', {
         type: 'info',
-        msg: `Зеркало ассетов: ${options.assetMirror ? options.assetMirror : 'Mojang (официальное)'}`
+        msg: `Зеркало ассетов: ${activeMirror || 'Mojang (официальное)'}${(options.assetMirror && !activeMirror) ? ' (указанное зеркало отклонено — недопустимый хост)' : ''}`
       });
     }
 
@@ -943,9 +990,11 @@ ipcMain.handle('install-forge', async (_, mcVersion, gameDir) => {
     const dlUrl = 'https://maven.minecraftforge.net/net/minecraftforge/forge/' + fullVer + '/' + installerName;
     const tmpPath = path.join(app.getPath('temp'), installerName);
     send({ stage: 'downloading-forge', ver: mcVersion });
+    // This jar is executed afterwards (java -jar ... --installClient), so pin the
+    // download to the official Forge maven and forbid redirects off-host.
     await downloadFile(dlUrl, tmpPath, (received, total) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-progress', { received, total });
-    });
+    }, null, ['maven.minecraftforge.net', 'files.minecraftforge.net']);
     send({ stage: 'installing-forge', ver: mcVersion });
     const dir = gameDir || getDefaultGameDir();
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -1018,9 +1067,11 @@ ipcMain.handle('install-neoforge', async (_, mcVersion, gameDir) => {
     const dlUrl = 'https://maven.neoforged.net/releases/net/neoforged/neoforge/' + neoVer + '/' + installerName;
     const tmpPath = path.join(app.getPath('temp'), installerName);
     send({ stage: 'downloading-neoforge', ver: mcVersion });
+    // Executed afterwards (java -jar ... --installClient) — pin to the official
+    // NeoForge maven and forbid redirects off-host.
     await downloadFile(dlUrl, tmpPath, (received, total) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mod-progress', { received, total });
-    });
+    }, null, ['maven.neoforged.net']);
     send({ stage: 'installing-neoforge', ver: mcVersion });
     const dir = gameDir || getDefaultGameDir();
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -1068,12 +1119,16 @@ ipcMain.handle('download-mod-modrinth', async (_, modId, mcVersion, loader, game
     if (!versions || !versions.length) return { success: false, notFound: true };
     const file = versions[0].files.find(f => f.primary) || versions[0].files[0];
     if (!file) return { success: false, notFound: true };
+    // Never trust the API-supplied filename for a path — strip any directory
+    // component so it can't escape modsDir (e.g. "../../...").
+    const safeName = path.basename(String(file.filename || ''));
+    if (!safeName || safeName === '.' || safeName === '..') return { success: false, error: 'Некорректное имя файла мода' };
     const dir = gameDir || getDefaultGameDir();
     // Use version-specific subfolder so mods don't conflict across versions
     // Fabric Loader automatically loads mods from mods/{mcVersion}/ subfolder
     const modsDir = path.join(dir, 'mods', mcVersion);
     if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
-    const dest = path.join(modsDir, file.filename);
+    const dest = path.join(modsDir, safeName);
     if (fs.existsSync(dest)) return { success: true, skipped: true };
     send({ stage: 'downloading-mod', modId, filename: file.filename });
     const integrity = file.hashes && file.hashes.sha512 ? { algo: 'sha512', hash: file.hashes.sha512 } : null;
@@ -1126,6 +1181,98 @@ ipcMain.handle('get-servers', async () => {
     const json = await fetchJson(url);
     return Array.isArray(json) ? json : [];
   } catch { return []; }
+});
+
+// ── Admin: publish servers.json straight to GitHub ───────────────────────────
+// The write-capable GitHub token is stored ENCRYPTED on the admin's machine only
+// (DPAPI via SENSITIVE_KEYS) and never ships in the build. A non-admin can call
+// these handlers, but without a token that has write access to the repo every
+// request fails — possession of the token is the real authorization.
+const GH_OWNER = 'PaltoProjects';
+const GH_REPO = 'PaltoCraft';
+const GH_FILE = 'servers.json';
+const GH_BRANCH = 'main';
+
+function githubRequest(method, apiPath, token, bodyObj) {
+  return new Promise((resolve, reject) => {
+    const data = bodyObj ? Buffer.from(JSON.stringify(bodyObj)) : null;
+    const req = https.request({
+      hostname: 'api.github.com',
+      path: apiPath,
+      method,
+      headers: {
+        'User-Agent': 'PaltoCraft-Admin',
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        ...(data ? { 'Content-Type': 'application/json', 'Content-Length': data.length } : {})
+      },
+      timeout: 15000
+    }, (res) => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        let json = null;
+        try { json = JSON.parse(body); } catch {}
+        resolve({ status: res.statusCode, json });
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(new Error('timeout')); });
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+ipcMain.handle('admin-has-token', () => !!secureGet('github-token'));
+
+ipcMain.handle('admin-set-token', (_, token) => {
+  if (typeof token !== 'string' || !token.trim()) return { success: false, error: 'Пустой токен' };
+  secureSet('github-token', token.trim());
+  return { success: true };
+});
+
+ipcMain.handle('admin-clear-token', () => { store.delete('github-token'); return { success: true }; });
+
+ipcMain.handle('admin-publish-servers', async (_, list) => {
+  try {
+    const token = secureGet('github-token');
+    if (!token) return { success: false, error: 'NO_TOKEN' };
+    if (!Array.isArray(list)) return { success: false, error: 'Неверные данные' };
+
+    // Sanitize so a stray/oversized field can't bloat or break the file.
+    const clean = list
+      .filter(s => s && typeof s === 'object')
+      .map(s => ({
+        name: String(s.name || '').slice(0, 100),
+        ip: String(s.ip || '').slice(0, 200),
+        version: String(s.version || '').slice(0, 50)
+      }))
+      .filter(s => s.name || s.ip);
+
+    const content = Buffer.from(JSON.stringify(clean, null, 2) + '\n').toString('base64');
+
+    // Need the current file SHA to update it (omit when the file doesn't exist yet).
+    let sha;
+    const getRes = await githubRequest('GET', `/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?ref=${GH_BRANCH}`, token);
+    if (getRes.status === 200 && getRes.json) sha = getRes.json.sha;
+    else if (getRes.status === 401 || getRes.status === 403) return { success: false, error: 'Токен недействителен или нет прав на запись' };
+    else if (getRes.status !== 404) return { success: false, error: `GitHub GET ${getRes.status}: ${getRes.json && getRes.json.message || ''}` };
+
+    const putRes = await githubRequest('PUT', `/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, token, {
+      message: 'admin: update servers.json',
+      content,
+      branch: GH_BRANCH,
+      ...(sha ? { sha } : {})
+    });
+    if (putRes.status === 200 || putRes.status === 201) {
+      return { success: true, count: clean.length };
+    }
+    if (putRes.status === 401 || putRes.status === 403) return { success: false, error: 'Токен недействителен или нет прав на запись' };
+    return { success: false, error: `GitHub PUT ${putRes.status}: ${putRes.json && putRes.json.message || ''}` };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 function safeCacheKey(key) {
@@ -1289,18 +1436,23 @@ ipcMain.handle('modrinth-install-mod', async (_, profileId, projectId) => {
     const file = versions[0].files.find(f => f.primary) || versions[0].files[0];
     if (!file) return { success: false, error: 'Файл мода не найден' };
 
+    // Never trust the API-supplied filename for a path — strip any directory
+    // component so it can't escape modsDir (e.g. "../../...").
+    const safeName = path.basename(String(file.filename || ''));
+    if (!safeName || safeName === '.' || safeName === '..') return { success: false, error: 'Некорректное имя файла мода' };
+
     const modsDir = path.join(getProfileInstanceDir(profile), 'mods');
     if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
 
-    const dest = path.join(modsDir, file.filename);
+    const dest = path.join(modsDir, safeName);
     if (fs.existsSync(dest)) {
       // Already on disk — ensure mapping is saved
       const map = readModrinthMap(profile);
-      if (!map[projectId]) { map[projectId] = file.filename; saveModrinthMap(profile, map); }
-      return { success: true, skipped: true, filename: file.filename };
+      if (!map[projectId]) { map[projectId] = safeName; saveModrinthMap(profile, map); }
+      return { success: true, skipped: true, filename: safeName };
     }
 
-    send({ stage: 'downloading', filename: file.filename });
+    send({ stage: 'downloading', filename: safeName });
     const integrity = file.hashes && file.hashes.sha512 ? { algo: 'sha512', hash: file.hashes.sha512 } : null;
     await downloadFile(file.url, dest, (received, total) => {
       send({ stage: 'progress', received, total });
@@ -1308,10 +1460,10 @@ ipcMain.handle('modrinth-install-mod', async (_, profileId, projectId) => {
 
     // Save projectId → filename mapping
     const map = readModrinthMap(profile);
-    map[projectId] = file.filename;
+    map[projectId] = safeName;
     saveModrinthMap(profile, map);
 
-    return { success: true, skipped: false, filename: file.filename };
+    return { success: true, skipped: false, filename: safeName };
   } catch (err) { return { success: false, error: err.message }; }
 });
 

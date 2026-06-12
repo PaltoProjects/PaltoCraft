@@ -268,24 +268,26 @@ spawnParticles();
 let currentUser = null;
 
 async function loadAuth() {
-  const token = await window.launcher.storeGet('auth-token');
+  // The raw token never leaves the main process; we only ask whether a session
+  // exists and read the non-secret profile for display.
+  const { loggedIn } = await window.launcher.authStatus();
   const profile = await window.launcher.storeGet('auth-profile');
-  if (token) {
+  if (loggedIn) {
     appendConsole('info', 'Найден сохранённый аккаунт, выполняется вход...');
-    setLoggedIn(token, profile);
+    setLoggedIn(profile);
   } else {
     appendConsole('info', 'Аккаунт не найден — требуется авторизация.');
   }
 }
 
-function setLoggedIn(token, profile) {
-  currentUser = token;
+function setLoggedIn(profile) {
+  currentUser = profile || true;
   document.getElementById('state-login').style.display = 'none';
   document.getElementById('state-launch').style.display = 'flex';
   document.querySelector('.nav-item[data-page="mods"]').style.display = '';
 
-  const name = (profile && profile.name) || token.name || 'Player';
-  const rawUuid = (profile && profile.id) || token.uuid || '';
+  const name = (profile && profile.name) || 'Player';
+  const rawUuid = (profile && profile.id) || '';
   const uuid = rawUuid.replace(/-/g, '');
 
   document.getElementById('launch-username').textContent = name;
@@ -329,7 +331,7 @@ document.getElementById('btn-login').addEventListener('click', async () => {
 
   const result = await window.launcher.authMicrosoft();
   if (result.success) {
-    setLoggedIn(result.token, result.profile);
+    setLoggedIn(result.profile);
   } else {
     const AUTH_ERRORS = {
       NO_LICENSE:  'На этом аккаунте Microsoft нет лицензии Minecraft: Java Edition.\nКупить игру можно на minecraft.net',
@@ -348,6 +350,8 @@ document.getElementById('btn-login').addEventListener('click', async () => {
 document.getElementById('btn-logout').addEventListener('click', async () => {
   await window.launcher.storeDelete('auth-token');
   await window.launcher.storeDelete('auth-profile');
+  // Also drop the refresh token, otherwise the Microsoft session survives logout.
+  await window.launcher.storeDelete('auth-refresh');
   setLoggedOut();
 });
 
@@ -1214,7 +1218,7 @@ async function initAdmin(uuid) {
       const b = document.createElement('button');
       b.className = 'btn-admin';
       b.textContent = 'Админ-Панель';
-      b.onclick = () => { const m = document.getElementById('__ap'); if (m) { m.style.display = 'flex'; _renderAdminRows(); } };
+      b.onclick = () => { const m = document.getElementById('__ap'); if (m) { m.style.display = 'flex'; _renderAdminRows(); _refreshTokenStatus(); } };
       wrap.insertBefore(b, wrap.firstChild);
     }
     _buildAdminPanel();
@@ -1238,10 +1242,18 @@ function _buildAdminPanel() {
       <span class="admin-section-title">Игровые серверы</span>
       <div id="__ap-rows"></div>
       <button class="btn btn-sm" id="__ap-add">+ Добавить сервер</button>
+
+      <span class="admin-section-title" style="margin-top:14px">GitHub токен (хранится только у тебя)</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input class="input" id="__ap-token" type="password" placeholder="github_pat_… / ghp_…" style="flex:1">
+        <button class="btn btn-sm" id="__ap-token-save">Сохранить</button>
+        <button class="btn btn-sm" id="__ap-token-clear">Удалить</button>
+      </div>
+      <span class="admin-hint" id="__ap-token-status"></span>
     </div>
     <div class="admin-footer">
-      <button class="btn btn-primary" id="__ap-copy">Скопировать JSON</button>
-      <span class="admin-hint">Вставь в servers.json на GitHub и запушь</span>
+      <button class="btn btn-primary" id="__ap-publish">Сохранить и опубликовать</button>
+      <span class="admin-hint" id="__ap-publish-status"></span>
     </div>`;
 
   ov.appendChild(card);
@@ -1249,13 +1261,50 @@ function _buildAdminPanel() {
 
   document.getElementById('__ap-x').onclick = () => { ov.style.display = 'none'; };
   document.getElementById('__ap-add').onclick = () => { _srv.push({ name: '', ip: '', version: '' }); _renderAdminRows(); };
-  document.getElementById('__ap-copy').onclick = () => {
-    navigator.clipboard.writeText(JSON.stringify(_srv, null, 2));
-    const btn = document.getElementById('__ap-copy');
-    const orig = btn.textContent;
-    btn.textContent = 'Скопировано!';
-    setTimeout(() => { btn.textContent = orig; }, 1800);
+
+  document.getElementById('__ap-token-save').onclick = async () => {
+    const field = document.getElementById('__ap-token');
+    const token = field.value.trim();
+    if (!token) return;
+    const r = await window.launcher.adminSetToken(token);
+    field.value = '';
+    _setApStatus('__ap-token-status', r.success ? 'Токен сохранён ✓' : ('Ошибка: ' + (r.error || '')), r.success);
+    _refreshTokenStatus();
   };
+  document.getElementById('__ap-token-clear').onclick = async () => {
+    await window.launcher.adminClearToken();
+    _refreshTokenStatus();
+    _setApStatus('__ap-token-status', 'Токен удалён', true);
+  };
+
+  document.getElementById('__ap-publish').onclick = async () => {
+    const btn = document.getElementById('__ap-publish');
+    btn.disabled = true;
+    _setApStatus('__ap-publish-status', 'Публикация…', true);
+    const r = await window.launcher.adminPublishServers(_srv);
+    btn.disabled = false;
+    if (r.success) {
+      _setApStatus('__ap-publish-status', `Опубликовано ✓ (${r.count} серв.) — у игроков обновится в течение пары минут`, true);
+    } else if (r.error === 'NO_TOKEN') {
+      _setApStatus('__ap-publish-status', 'Сначала сохрани GitHub токен выше', false);
+    } else {
+      _setApStatus('__ap-publish-status', 'Ошибка: ' + (r.error || ''), false);
+    }
+  };
+}
+
+function _setApStatus(id, text, ok) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = ok ? 'var(--green, #22c55e)' : 'var(--red, #ff6b6b)';
+}
+
+async function _refreshTokenStatus() {
+  try {
+    const has = await window.launcher.adminHasToken();
+    _setApStatus('__ap-token-status', has ? 'Токен сохранён ✓' : 'Токен не задан', has);
+  } catch {}
 }
 
 function _renderAdminRows() {

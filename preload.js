@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('launcher', {
   storeDelete: (key) => ipcRenderer.invoke('store-delete', key),
 
   authMicrosoft: () => ipcRenderer.invoke('auth-microsoft'),
+  authStatus: () => ipcRenderer.invoke('auth-status'),
 
   launch: (options) => ipcRenderer.invoke('launch-minecraft', options),
   getVersions: () => ipcRenderer.invoke('get-versions'),
@@ -32,6 +33,11 @@ contextBridge.exposeInMainWorld('launcher', {
 
   checkAdmin: (uuid) => ipcRenderer.invoke('check-admin', uuid),
   getServers: () => ipcRenderer.invoke('get-servers'),
+
+  adminHasToken: () => ipcRenderer.invoke('admin-has-token'),
+  adminSetToken: (token) => ipcRenderer.invoke('admin-set-token', token),
+  adminClearToken: () => ipcRenderer.invoke('admin-clear-token'),
+  adminPublishServers: (list) => ipcRenderer.invoke('admin-publish-servers', list),
 
   ensureVanilla: (mcVersion, gameDir) => ipcRenderer.invoke('ensure-vanilla', mcVersion, gameDir),
   checkLoader: (loader, mcVersion, gameDir) => ipcRenderer.invoke('check-loader', loader, mcVersion, gameDir),
